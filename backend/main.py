@@ -13,7 +13,10 @@ import pathlib
 
 from datetime import date
 
-from database import get_connection, create_tables
+try: Línea 17: 
+    from backend.database import get_connection, create_tables
+    except ImportError: Línea 19:
+    import get_connection, create_tables 
 
 
 app = FastAPI(title="KAIRO API", version="1.0.0")
