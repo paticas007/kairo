@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KAIRO</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="topbar" id="pre-login-topbar">
+  <div class="logo">KAIRO</div>
+</header>
+
+<main>
+
+  <!-- ============================================================
+       SELECCIÓN DE ROL
+  ============================================================= -->
+  <section id="role-section" class="section">
+    <div class="hero">
+      <p class="eyebrow">ORGANIZA. ANTICIPA. APRENDE.</p>
+      <h1>KAIRO</h1>
+      <p class="subtitle">Una plataforma para estudiantes y profesores.</p>
+    </div>
+    <h2>¿Cuál es tu rol?</h2>
+    <div class="role-grid">
+      <button class="role-card" onclick="selectRole('student')">
+        <span class="role-title">Estudiante</span>
+        <span class="role-description">Organiza tus tareas, exámenes y proyectos. Descubre qué hacer cada día.</span>
+      </button>
+      <button class="role-card" onclick="selectRole('teacher')">
+        <span class="role-title">Profesor</span>
+        <span class="role-description">Gestiona tus clases y actividades. Organiza mejor la carga académica.</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       AUTENTICACIÓN
+  ============================================================= -->
+  <section id="auth-section" class="section hidden">
+    <button class="back-btn" onclick="backToRoles()">← Volver</button>
+
+    <div id="login-container" class="auth-card">
+      <h2>Iniciar sesión</h2>
+      <p>Entra en tu cuenta de KAIRO.</p>
+      <form id="login-form">
+        <input id="login-email" type="email" placeholder="Correo electrónico" required>
+        <input id="login-password" type="password" placeholder="Contraseña" required>
+        <button type="submit" class="primary-btn">Iniciar sesión</button>
+      </form>
+      <button class="text-btn" onclick="showRegister()">Crear una cuenta</button>
+    </div>
+
+    <div id="register-container" class="auth-card hidden">
+      <h2>Crear cuenta</h2>
+      <form id="register-form">
+        <input id="register-name" type="text" placeholder="Nombre" required>
+        <input id="register-surname" type="text" placeholder="Apellidos" required>
+        <input id="register-email" type="email" placeholder="Correo electrónico" required>
+        <input id="register-password" type="password" placeholder="Contraseña" required>
+        <input id="register-course" type="text" placeholder="Curso">
+        <input id="register-center" type="text" placeholder="Centro educativo" required>
+        <button type="submit" class="primary-btn">Crear cuenta</button>
+      </form>
+      <button class="text-btn" onclick="showLogin()">Ya tengo una cuenta</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       APP: PROFESOR
+  ============================================================= -->
+  <div id="teacher-shell" class="app-shell shell hidden">
+
+    <nav class="sidebar">
+      <div class="sidebar-logo">KAIRO</div>
+      <span class="sidebar-role-badge">PROFESOR</span>
+
+      <button class="nav-item active" data-view="dashboard">🏠 &nbsp;Inicio</button>
+      <button class="nav-item" data-view="classes">📚 &nbsp;Mis clases</button>
+      <button class="nav-item" data-view="tasks">📝 &nbsp;Actividades</button>
+      <button class="nav-item" data-view="progress">✅ &nbsp;Seguimiento</button>
+      <button class="nav-item" data-view="evaluation">📊 &nbsp;Evaluación</button>
+
+      <div class="nav-spacer"></div>
+      <button class="nav-item logout-item" id="teacher-logout-btn">🚪 &nbsp;Cerrar sesión</button>
+    </nav>
+
+    <div class="main-content">
+
+      <!-- DASHBOARD -->
+      <div class="view" id="teacher-view-dashboard">
+        <div class="view-header">
+          <div>
+            <h1 id="teacher-welcome">Bienvenido.</h1>
+            <p>Este es el resumen de tu actividad en KAIRO.</p>
+          </div>
+          <span class="welcome-date" id="teacher-today"></span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card"><div class="metric-value" id="metric-classes">0</div><div class="metric-label">Clases activas</div></div>
+          <div class="metric-card"><div class="metric-value" id="metric-tasks">0</div><div class="metric-label">Tareas publicadas</div></div>
+          <div class="metric-card"><div class="metric-value" id="metric-exams">0</div><div class="metric-label">Exámenes</div></div>
+          <div class="metric-card"><div class="metric-value" id="metric-projects">0</div><div class="metric-label">Proyectos</div></div>
+        </div>
+
+        <div class="panel">
+          <h2>Últimas actividades creadas</h2>
+          <div id="teacher-activities-dashboard"></div>
+        </div>
+      </div>
+
+      <!-- CLASES -->
+      <div class="view hidden" id="teacher-view-classes">
+        <div class="view-header">
+          <div><h1>Mis clases</h1><p>Crea clases y comparte el código con tus alumnos.</p></div>
+          <button class="primary-btn" onclick="document.getElementById('modal-create-class').showModal()">+ Crear clase</button>
+        </div>
+        <div id="teacher-classes" class="cards"></div>
+      </div>
+
+      <!-- ACTIVIDADES -->
+      <div class="view hidden" id="teacher-view-tasks">
+        <div class="view-header">
+          <div><h1>Actividades</h1><p>Tareas, exámenes y proyectos de todas tus clases.</p></div>
+          <button class="primary-btn" onclick="document.getElementById('modal-create-activity').showModal()">+ Nueva actividad</button>
+        </div>
+        <div class="panel">
+          <div id="teacher-activities"></div>
+        </div>
+      </div>
+
+      <!-- SEGUIMIENTO -->
+      <div class="view hidden" id="teacher-view-progress">
+        <div class="view-header">
+          <div><h1>Seguimiento de tareas</h1><p>Comprueba qué alumnos han completado cada tarea.</p></div>
+        </div>
+        <div class="panel">
+          <select id="progress-class">
+            <option value="">Selecciona una clase</option>
+          </select>
+          <div id="progress-tasks" style="margin-top: 16px;"></div>
+        </div>
+      </div>
+
+      <!-- EVALUACIÓN -->
+      <div class="view hidden" id="teacher-view-evaluation">
+        <div class="view-header">
+          <div><h1>Evaluación</h1><p>Define el peso de cada apartado por clase.</p></div>
+        </div>
+        <div class="panel">
+          <form id="evaluation-form">
+            <select id="evaluation-class" required>
+              <option value="">Selecciona una clase</option>
+            </select>
+            <input id="weight-exams" type="number" min="0" max="100" placeholder="% Exámenes">
+            <input id="weight-tasks" type="number" min="0" max="100" placeholder="% Tareas">
+            <input id="weight-notebook" type="number" min="0" max="100" placeholder="% Cuaderno">
+            <input id="weight-projects" type="number" min="0" max="100" placeholder="% Proyectos">
+            <input id="weight-participation" type="number" min="0" max="100" placeholder="% Participación">
+            <button type="submit" class="primary-btn">Guardar evaluación</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================
+       APP: ALUMNO
+  ============================================================= -->
+  <div id="student-shell" class="app-shell shell hidden">
+
+    <nav class="sidebar">
+      <div class="sidebar-logo">KAIRO</div>
+      <span class="sidebar-role-badge">ESTUDIANTE</span>
+
+      <button class="nav-item active" data-view="dashboard">🏠 &nbsp;Inicio</button>
+      <button class="nav-item" data-view="classes">📚 &nbsp;Mis clases</button>
+      <button class="nav-item" data-view="plan">🗓️ &nbsp;Plan diario</button>
+
+      <div class="nav-spacer"></div>
+      <button class="nav-item logout-item" id="student-logout-btn">🚪 &nbsp;Cerrar sesión</button>
+    </nav>
+
+    <div class="main-content">
+
+      <!-- DASHBOARD -->
+      <div class="view" id="student-view-dashboard">
+        <div class="view-header">
+          <div>
+            <h1 id="student-welcome">Hola.</h1>
+            <p>Esto es lo que KAIRO ha preparado para ti.</p>
+          </div>
+          <span class="welcome-date" id="student-today"></span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card"><div class="metric-value" id="metric-student-classes">0</div><div class="metric-label">Mis clases</div></div>
+          <div class="metric-card"><div class="metric-value" id="metric-student-pending">0</div><div class="metric-label">Pendientes en el plan</div></div>
+          <div class="metric-card"><div class="metric-value" id="metric-student-exams">0</div><div class="metric-label">Exámenes próximos</div></div>
+        </div>
+
+        <div class="panel">
+          <h2>Lo más urgente</h2>
+          <div id="student-plan-preview"></div>
+        </div>
+      </div>
+
+      <!-- CLASES -->
+      <div class="view hidden" id="student-view-classes">
+        <div class="view-header">
+          <div><h1>Mis clases</h1><p>Únete a una clase con el código de tu profesor.</p></div>
+          <button class="primary-btn" onclick="document.getElementById('modal-join-class').showModal()">+ Unirme a una clase</button>
+        </div>
+        <div id="student-classes" class="cards"></div>
+      </div>
+
+      <!-- PLAN -->
+      <div class="view hidden" id="student-view-plan">
+        <div class="view-header">
+          <div><h1>Plan de KAIRO</h1><p>KAIRO recoge la información de tus clases y construye tu plan.</p></div>
+        </div>
+        <div class="panel">
+          <div id="student-plan"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ============================================================
+     MODALES
+============================================================= -->
+
+<dialog id="modal-create-class">
+  <div class="modal-header">
+    <h2>Crear clase</h2>
+    <button class="modal-close" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <div class="modal-body">
+    <form id="create-class-form">
+      <input id="class-course" type="text" placeholder="Curso — Ej: 3º ESO" required>
+      <input id="class-group" type="text" placeholder="Grupo — Ej: B" required>
+      <input id="class-subject" type="text" placeholder="Asignatura — Ej: Matemáticas" required>
+      <button type="submit" class="primary-btn">Crear clase</button>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="modal-create-activity">
+  <div class="modal-header">
+    <h2>Nueva actividad</h2>
+    <button class="modal-close" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <div class="modal-body">
+    <form id="create-activity-form">
+      <select id="activity-class" required>
+        <option value="">Selecciona una clase</option>
+      </select>
+
+      <div class="choice-group" data-target="activity-type">
+        <button type="button" class="choice-btn active" data-value="task">📝 Tarea</button>
+        <button type="button" class="choice-btn" data-value="exam">📚 Examen</button>
+        <button type="button" class="choice-btn" data-value="project">🗂️ Proyecto</button>
+      </div>
+      <input type="hidden" id="activity-type" value="task">
+
+      <input id="activity-title" type="text" placeholder="Título" required>
+      <textarea id="activity-description" placeholder="Descripción"></textarea>
+      <input id="activity-date" type="date" required>
+
+      <div class="choice-group" data-target="activity-priority">
+        <button type="button" class="choice-btn priority-high" data-value="alta">🔴 Alta</button>
+        <button type="button" class="choice-btn priority-medium active" data-value="media">🟡 Media</button>
+        <button type="button" class="choice-btn priority-low" data-value="baja">🟢 Baja</button>
+      </div>
+      <input type="hidden" id="activity-priority" value="media">
+
+      <div id="mandatory-row">
+        <label class="checkbox-row">
+          <input id="activity-mandatory" type="checkbox" checked>
+          Obligatoria
+        </label>
+      </div>
+
+      <p class="modal-note">Los alumnos verán esta actividad en cuanto la publiques.</p>
+
+      <button type="submit" class="primary-btn">Publicar actividad</button>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="modal-join-class">
+  <div class="modal-header">
+    <h2>Unirme a una clase</h2>
+    <button class="modal-close" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <div class="modal-body">
+    <form id="join-class-form">
+      <input id="join-code" type="text" placeholder="Código de clase" maxlength="5" required>
+      <button type="submit" class="primary-btn">Unirme a la clase</button>
+    </form>
+  </div>
+</dialog>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
