@@ -4,6 +4,7 @@
 
 import os
 import pathlib
+import time
 
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
@@ -25,6 +26,23 @@ def dict_row_factory(cursor_description, row):
 if TURSO_URL and TURSO_TOKEN:
 
     import libsql
+
+    # --------------------------------------------------------
+    # Solo sincronizamos con internet como máximo una vez
+    # cada 5 segundos, en vez de en cada conexión. Los datos
+    # que se escriben siempre van directos a Turso igualmente
+    # (esto solo afecta a la rapidez de las lecturas).
+    # --------------------------------------------------------
+
+    _last_sync_time = 0
+    _SYNC_INTERVAL_SECONDS = 5
+
+    def _maybe_sync(raw_connection):
+        global _last_sync_time
+        now = time.time()
+        if now - _last_sync_time > _SYNC_INTERVAL_SECONDS:
+            raw_connection.sync()
+            _last_sync_time = now
 
     class DictCursorWrapper:
 
@@ -81,7 +99,7 @@ if TURSO_URL and TURSO_TOKEN:
             auth_token=TURSO_TOKEN
         )
 
-        raw_connection.sync()
+        _maybe_sync(raw_connection)
 
         try:
             raw_connection.execute("PRAGMA foreign_keys = ON")
@@ -167,12 +185,6 @@ def create_tables():
         )
     """)
 
-    # --------------------------------------------------------
-    # CATEGORÍAS DE EVALUACIÓN   <-- NUEVO (sustituye a "evaluations")
-    # --------------------------------------------------------
-
-    # Cada clase define sus propias categorías, con el nombre
-    # y el porcentaje que el profesor decida (deben sumar 100).
     connection.execute("""
         CREATE TABLE IF NOT EXISTS evaluation_categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -267,6 +279,22 @@ def create_tables():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # --------------------------------------------------------
+    # "PARCHES" PARA TABLAS QUE YA EXISTÍAN DE ANTES
+    # --------------------------------------------------------
+
+    # Si la tabla ya existía sin la columna category_id (como
+    # es tu caso ahora mismo), la añadimos aquí. Si ya la
+    # tiene, esto fallará silenciosamente y no pasa nada.
+
+    for table_name in ["tasks", "exams", "projects"]:
+        try:
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN category_id INTEGER"
+            )
+        except Exception:
+            pass
 
     connection.commit()
     connection.close()
