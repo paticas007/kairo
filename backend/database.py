@@ -27,13 +27,6 @@ if TURSO_URL and TURSO_TOKEN:
 
     import libsql
 
-    # --------------------------------------------------------
-    # Solo sincronizamos con internet como máximo una vez
-    # cada 5 segundos, en vez de en cada conexión. Los datos
-    # que se escriben siempre van directos a Turso igualmente
-    # (esto solo afecta a la rapidez de las lecturas).
-    # --------------------------------------------------------
-
     _last_sync_time = 0
     _SYNC_INTERVAL_SECONDS = 5
 
@@ -280,14 +273,9 @@ def create_tables():
         )
     """)
 
-    # --------------------------------------------------------
-    # "PARCHES" PARA TABLAS QUE YA EXISTÍAN DE ANTES
-    # --------------------------------------------------------
-
-    # Si la tabla ya existía sin la columna category_id (como
-    # es tu caso ahora mismo), la añadimos aquí. Si ya la
-    # tiene, esto fallará silenciosamente y no pasa nada.
-
+    # Parche para bases de datos que ya existían antes de
+    # tener la columna category_id — si ya la tienen, esto
+    # falla en silencio y no pasa nada.
     for table_name in ["tasks", "exams", "projects"]:
         try:
             connection.execute(
