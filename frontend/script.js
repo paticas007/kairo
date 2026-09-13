@@ -87,7 +87,7 @@ function setActiveView(role, viewName) {
 }
 
 // ============================================================
-// SELECTORES DE TIPO / PRIORIDAD (botones en vez de <select>)
+// SELECTORES DE TIPO / PRIORIDAD
 // ============================================================
 
 function initChoiceGroups() {
@@ -116,7 +116,7 @@ function toggleMandatoryVisibility(type) {
 }
 
 // ============================================================
-// CATEGORÍAS DE EVALUACIÓN (en el formulario de crear clase)
+// CATEGORÍAS DE EVALUACIÓN
 // ============================================================
 
 function addCategoryRow(name = "", percentage = "") {
@@ -388,8 +388,10 @@ function renderTeacherClasses() {
 function focusClassInTasks(classId) {
   setActiveView("teacher", "tasks");
   const select = document.getElementById("activity-class");
-  if (select) select.value = String(classId);
-  handleActivityClassChange({ target: select });
+  if (select) {
+    select.value = String(classId);
+    handleActivityClassChange({ target: select });
+  }
 }
 window.focusClassInTasks = focusClassInTasks;
 
@@ -480,10 +482,6 @@ async function handleCreateClass(event) {
   }
 }
 
-// ============================================================
-// CATEGORÍA EN EL FORMULARIO DE ACTIVIDAD
-// ============================================================
-
 async function handleActivityClassChange(event) {
   const classId = event.target.value;
   const categorySelect = document.getElementById("activity-category");
@@ -516,4 +514,363 @@ async function handleCreateActivity(event) {
   const description = document.getElementById("activity-description")?.value.trim();
   const date = document.getElementById("activity-date")?.value;
   const priority = document.getElementById("activity-priority")?.value;
-  const mandatory = document.getElementById("activity-mandatory"
+  const mandatory = document.getElementById("activity-mandatory")?.checked ?? true;
+
+  if (!classSelect || !classSelect.value) {
+    alert("Selecciona una clase.");
+    return;
+  }
+  if (!title || !date) {
+    alert("Introduce un título y una fecha.");
+    return;
+  }
+
+  const classId = Number(classSelect.value);
+  const categoryId = categorySelect && categorySelect.value ? Number(categorySelect.value) : null;
+
+  try {
+    if (type === "task") {
+      await api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, due_date: date, priority, mandatory })
+      });
+    } else if (type === "exam") {
+      await api("/api/exams", {
+        method: "POST",
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, exam_date: date, importance: priority })
+      });
+    } else if (type === "project") {
+      await api("/api/projects", {
+        method: "POST",
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, due_date: date, priority })
+      });
+    } else {
+      alert("Selecciona el tipo de actividad.");
+      return;
+    }
+
+    alert("Actividad creada correctamente.");
+    event.target.reset();
+    toggleMandatoryVisibility("task");
+    document.getElementById("modal-create-activity")?.close();
+
+    await loadTeacherActivities();
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function loadTeacherActivities() {
+  const container = document.getElementById("teacher-activities");
+  const dashboardContainer = document.getElementById("teacher-activities-dashboard");
+
+  try {
+    const activities = await api(`/api/teachers/${currentUser.id}/activities`);
+    teacherActivitiesCache = activities;
+
+    updateTeacherMetrics(activities);
+
+    const render = (target, list, emptyText) => {
+      if (!target) return;
+      target.innerHTML = "";
+      if (list.length === 0) {
+        target.innerHTML = `<p>${emptyText}</p>`;
+        return;
+      }
+      list.forEach(activity => {
+        const element = document.createElement("div");
+        element.className = `plan-item priority-${(activity.priority || "media").toLowerCase()}`;
+
+        let typeLabel = "TAREA";
+        if (activity.type === "exam") typeLabel = "EXAMEN";
+        else if (activity.type === "project") typeLabel = "PROYECTO";
+
+        const categoryLabel = activity.category_name ? ` · ${activity.category_name}` : "";
+
+        element.innerHTML = `
+          <div class="plan-title">${typeLabel} · ${activity.title}</div>
+          <div class="plan-meta">${activity.course} ${activity.group_name} · ${activity.subject}${categoryLabel} · ${activity.activity_date}</div>
+          <button type="button" class="secondary-btn danger-btn" onclick="deleteActivity('${activity.type}', ${activity.id})">🗑️ Eliminar</button>
+        `;
+        target.appendChild(element);
+      });
+    };
+
+    render(container, activities, "Aún no has creado actividades.");
+    render(dashboardContainer, activities.slice(0, 5), "Aún no has creado actividades.");
+
+  } catch (error) {
+    console.error("Error cargando actividades:", error);
+  }
+}
+
+async function deleteActivity(type, id) {
+  const confirmed = confirm("¿Seguro que quieres eliminar esta actividad? Esta acción no se puede deshacer.");
+  if (!confirmed) return;
+
+  const endpoints = {
+    task: `/api/tasks/${id}`,
+    exam: `/api/exams/${id}`,
+    project: `/api/projects/${id}`
+  };
+
+  try {
+    await api(`${endpoints[type]}?teacher_id=${currentUser.id}`, { method: "DELETE" });
+    await loadTeacherActivities();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+window.deleteActivity = deleteActivity;
+
+function updateTeacherMetrics(activities) {
+  const setMetric = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+
+  setMetric("metric-classes", teacherClasses.length);
+  setMetric("metric-tasks", activities.filter(a => a.type === "task").length);
+  setMetric("metric-exams", activities.filter(a => a.type === "exam").length);
+  setMetric("metric-projects", activities.filter(a => a.type === "project").length);
+}
+
+// ============================================================
+// SEGUIMIENTO DE TAREAS
+// ============================================================
+
+async function handleProgressClassChange(event) {
+  const classId = event.target.value;
+  const container = document.getElementById("progress-tasks");
+  if (!container) return;
+
+  container.innerHTML = "";
+  if (!classId) return;
+
+  try {
+    const tasks = await api(`/api/classes/${classId}/tasks`);
+
+    if (tasks.length === 0) {
+      container.innerHTML = "<p>Esta clase todavía no tiene tareas.</p>";
+      return;
+    }
+
+    tasks.forEach(task => {
+      const item = document.createElement("div");
+      item.className = "plan-item";
+      item.innerHTML = `
+        <div class="plan-title">${task.title}</div>
+        <div class="plan-meta">Entrega: ${task.due_date}</div>
+        <button type="button" class="secondary-btn" onclick="loadTaskProgress(${classId}, ${task.id})">Ver quién la ha hecho</button>
+        <div id="progress-result-${task.id}"></div>
+      `;
+      container.appendChild(item);
+    });
+
+  } catch (error) {
+    console.error("Error cargando tareas para seguimiento:", error);
+    container.innerHTML = "<p>No se pudieron cargar las tareas de esta clase.</p>";
+  }
+}
+
+async function loadTaskProgress(classId, taskId) {
+  const resultContainer = document.getElementById(`progress-result-${taskId}`);
+  if (!resultContainer) return;
+
+  resultContainer.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const students = await api(`/api/classes/${classId}/tasks/${taskId}/progress`);
+
+    if (students.length === 0) {
+      resultContainer.innerHTML = "<p>Esta clase todavía no tiene alumnos.</p>";
+      return;
+    }
+
+    resultContainer.innerHTML = students.map(student => `
+      <div class="progress-row">${student.completed ? "✅" : "⬜"} ${student.name} ${student.surname}</div>
+    `).join("");
+
+  } catch (error) {
+    console.error("Error cargando el seguimiento:", error);
+    resultContainer.innerHTML = "<p>No se pudo cargar el seguimiento.</p>";
+  }
+}
+window.loadTaskProgress = loadTaskProgress;
+
+// ============================================================
+// DASHBOARD ALUMNO
+// ============================================================
+
+async function loadStudentDashboard() {
+  const welcome = document.getElementById("student-welcome");
+  if (welcome) welcome.textContent = `Hola, ${currentUser.name}.`;
+
+  await loadStudentClasses();
+  await loadStudentPlan();
+
+  startAutoRefresh();
+}
+
+let planRefreshInterval = null;
+
+function startAutoRefresh() {
+  if (planRefreshInterval) {
+    clearInterval(planRefreshInterval);
+  }
+
+  planRefreshInterval = setInterval(() => {
+    if (currentUser && selectedRole === "student") {
+      loadStudentPlan();
+    }
+  }, 20000);
+}
+
+async function loadStudentClasses() {
+  const classes = await api(`/api/students/${currentUser.id}/classes`);
+  const container = document.getElementById("student-classes");
+
+  const metricClasses = document.getElementById("metric-student-classes");
+  if (metricClasses) metricClasses.textContent = classes.length;
+
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (classes.length === 0) {
+    container.innerHTML = "<p>Aún no perteneces a ninguna clase.</p>";
+    return;
+  }
+
+  classes.forEach(classItem => {
+    const card = document.createElement("div");
+    card.className = "class-card";
+    card.innerHTML = `
+      <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
+      <p>Profesor: ${classItem.teacher_name} ${classItem.teacher_surname}</p>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function handleJoinClass(event) {
+  event.preventDefault();
+
+  const code = document.getElementById("join-code")?.value.trim().toUpperCase();
+  if (!code) {
+    alert("Introduce el código de la clase.");
+    return;
+  }
+
+  try {
+    await api("/api/classes/join", {
+      method: "POST",
+      body: JSON.stringify({ student_id: currentUser.id, code })
+    });
+
+    alert("Te has unido a la clase correctamente.");
+    event.target.reset();
+    document.getElementById("modal-join-class")?.close();
+
+    await loadStudentDashboard();
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function markTaskComplete(taskId) {
+  try {
+    await api(`/api/tasks/${taskId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ student_id: currentUser.id })
+    });
+    await loadStudentPlan();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+window.markTaskComplete = markTaskComplete;
+
+async function loadStudentPlan() {
+  const container = document.getElementById("student-plan");
+  const previewContainer = document.getElementById("student-plan-preview");
+
+  if (container) container.innerHTML = "<p>KAIRO está pensando...</p>";
+
+  try {
+    const result = await api(`/api/students/${currentUser.id}/plan`);
+    studentPlanCache = result.plan || [];
+
+    updateStudentMetrics(studentPlanCache);
+
+    const emptyHtml = `
+      <div class="plan-item">
+        <div class="plan-title">No hay nada que organizar.</div>
+        <div class="plan-meta">Cuando tus profesores introduzcan tareas, exámenes o proyectos, KAIRO construirá tu plan.</div>
+      </div>
+    `;
+
+    const renderList = (target, items) => {
+      if (!target) return;
+      target.innerHTML = "";
+
+      if (items.length === 0) {
+        target.innerHTML = emptyHtml;
+        return;
+      }
+
+      items.forEach(item => {
+        const element = document.createElement("div");
+        element.className = `plan-item priority-${(item.priority || "media").toLowerCase()}`;
+
+        const label = item.mandatory ? "🔴 OBLIGATORIO" : "🟢 RECOMENDADO";
+
+        let typeLabel = "TAREA";
+        if (item.type === "exam_preparation") typeLabel = "PREPARACIÓN DE EXAMEN";
+        else if (item.type === "project") typeLabel = "PROYECTO";
+
+        const doneButton = item.type === "task"
+          ? `<button type="button" class="secondary-btn" onclick="markTaskComplete(${item.id})">✅ Marcar como hecha</button>`
+          : "";
+
+        element.innerHTML = `
+          <div class="plan-title">${label} · ${typeLabel}<br>${item.title}</div>
+          <div class="plan-meta">${item.subject} · ${formatDays(item.days_left)} · Importancia: ${item.priority}</div>
+          ${doneButton}
+        `;
+        target.appendChild(element);
+      });
+    };
+
+    renderList(container, studentPlanCache);
+    renderList(previewContainer, studentPlanCache.slice(0, 4));
+
+  } catch (error) {
+    console.error("Error generando el plan:", error);
+    const errorHtml = `
+      <div class="plan-item">
+        <div class="plan-title">No se ha podido generar el plan de KAIRO.</div>
+        <div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>
+      </div>
+    `;
+    if (container) container.innerHTML = errorHtml;
+    if (previewContainer) previewContainer.innerHTML = errorHtml;
+  }
+}
+
+function updateStudentMetrics(plan) {
+  const setMetric = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+  setMetric("metric-student-pending", plan.length);
+  setMetric("metric-student-exams", plan.filter(item => item.type === "exam_preparation").length);
+}
+
+function formatDays(days) {
+  if (days < 0) return "ATRASADO";
+  if (days === 0) return "HOY";
+  if (days === 1) return "MAÑANA";
+  return `En ${days} días`;
+}
