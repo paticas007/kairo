@@ -616,6 +616,27 @@ async function loadStudentDashboard() {
   await loadStudentPlan();
 }
 
+// ============================================================
+// ACTUALIZACIÓN AUTOMÁTICA DEL PLAN (sin recargar la página)
+// ============================================================
+
+let planRefreshInterval = null;
+
+function startAutoRefresh() {
+  // Si ya había uno funcionando, lo paramos antes de crear otro.
+  if (planRefreshInterval) {
+    clearInterval(planRefreshInterval);
+  }
+
+  // Cada 20000 milisegundos (20 segundos), vuelve a pedir el plan.
+  planRefreshInterval = setInterval(() => {
+    if (currentUser && selectedRole === "student") {
+      loadStudentPlan();
+    }
+  }, 20000);
+}
+
+
 async function loadStudentClasses() {
   const classes = await api(`/api/students/${currentUser.id}/classes`);
   const container = document.getElementById("student-classes");
