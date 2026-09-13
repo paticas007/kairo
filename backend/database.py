@@ -9,14 +9,9 @@ import pathlib
 # ¿ESTAMOS EN RENDER (con Turso) O EN TU ORDENADOR (local)?
 # --------------------------------------------------------
 
-# Estas dos variables solo existirán si las has configurado
-# en Render. En tu ordenador, en local, no existen — así que
-# ahí seguirá usando un archivo normal, como hasta ahora.
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
 
-# Ruta del archivo local (se usa siempre, incluso con Turso,
-# como una "copia rápida" que se mantiene sincronizada).
 LOCAL_DB_PATH = str(
     pathlib.Path(__file__)
     .resolve()
@@ -26,14 +21,14 @@ LOCAL_DB_PATH = str(
 )
 
 
-def dict_row_factory(cursor, row):
+def dict_row_factory(cursor_description, row):
     """
-    Convierte cada fila que devuelve la base de datos en un
-    diccionario normal de Python (por ejemplo {"id": 1, "name": "Ana"}),
-    para poder escribir fila["nombre_columna"] en el resto del código,
-    tanto si usamos SQLite normal como si usamos Turso.
+    Convierte una fila (una tupla simple) en un diccionario
+    normal de Python, usando los nombres de columna que trae
+    la consulta. Así podemos escribir fila["nombre_columna"]
+    tanto si venimos de SQLite normal como de Turso.
     """
-    columns = [description[0] for description in cursor.description]
+    columns = [description[0] for description in cursor_description]
     return dict(zip(columns, row))
 
 
@@ -49,32 +44,86 @@ if TURSO_URL and TURSO_TOKEN:
 
     import libsql
 
+    class DictCursorWrapper:
+        """
+        Envuelve un cursor de Turso para que, al pedir los
+        resultados, nos los devuelva como diccionarios en vez
+        de tuplas sueltas — sin necesitar la propiedad
+        'row_factory' que Turso no tiene.
+        """
+
+        def __init__(self, raw_cursor):
+            self._raw = raw_cursor
+
+        def execute(self, sql, params=None):
+            if params is None:
+                self._raw.execute(sql)
+            else:
+                self._raw.execute(sql, params)
+            return self
+
+        def fetchone(self):
+            row = self._raw.fetchone()
+            if row is None:
+                return None
+            return dict_row_factory(self._raw.description, row)
+
+        def fetchall(self):
+            rows = self._raw.fetchall()
+            return [
+                dict_row_factory(self._raw.description, row)
+                for row in rows
+            ]
+
+        @property
+        def lastrowid(self):
+            return self._raw.lastrowid
+
+    class DictConnectionWrapper:
+        """
+        Envuelve la conexión de Turso entera, para que se use
+        exactamente igual que una conexión normal de SQLite
+        desde el resto del código (main.py no se entera de
+        que por dentro es distinto).
+        """
+
+        def __init__(self, raw_connection):
+            self._raw = raw_connection
+
+        def execute(self, sql, params=None):
+            if params is None:
+                raw_cursor = self._raw.execute(sql)
+            else:
+                raw_cursor = self._raw.execute(sql, params)
+            return DictCursorWrapper(raw_cursor)
+
+        def commit(self):
+            self._raw.commit()
+
+        def close(self):
+            self._raw.close()
+
     def get_connection():
         """
         Se conecta a la base de datos de Turso (en internet).
-        Cada vez que abrimos una conexión, la sincronizamos
-        primero, para asegurarnos de ver siempre los datos
+        La sincronizamos primero, para ver siempre los datos
         más recientes, aunque el servidor se haya reiniciado.
         """
 
-        connection = libsql.connect(
+        raw_connection = libsql.connect(
             LOCAL_DB_PATH,
             sync_url=TURSO_URL,
             auth_token=TURSO_TOKEN
         )
 
-        connection.sync()
+        raw_connection.sync()
 
-        connection.row_factory = dict_row_factory
-
-        # Turso puede no soportar exactamente este comando;
-        # si falla, no pasa nada, simplemente lo ignoramos.
         try:
-            connection.execute("PRAGMA foreign_keys = ON")
+            raw_connection.execute("PRAGMA foreign_keys = ON")
         except Exception:
             pass
 
-        return connection
+        return DictConnectionWrapper(raw_connection)
 
 else:
 
@@ -109,9 +158,7 @@ def create_tables():
 
     connection = get_connection()
 
-    cursor = connection.cursor()
-
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS teachers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -123,7 +170,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -136,7 +183,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS classes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id INTEGER NOT NULL,
@@ -151,7 +198,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS class_students (
             class_id INTEGER NOT NULL,
             student_id INTEGER NOT NULL,
@@ -166,7 +213,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL,
@@ -183,7 +230,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS task_completions (
             task_id INTEGER NOT NULL,
             student_id INTEGER NOT NULL,
@@ -198,7 +245,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS exams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL,
@@ -213,7 +260,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL,
@@ -228,7 +275,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
             role TEXT NOT NULL,
@@ -237,7 +284,7 @@ def create_tables():
         )
     """)
 
-    cursor.execute("""
+    connection.execute("""
         CREATE TABLE IF NOT EXISTS evaluations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL UNIQUE,
@@ -255,7 +302,5 @@ def create_tables():
     connection.commit()
     connection.close()
 
-
-create_tables()
 
 create_tables()
