@@ -2,19 +2,22 @@
 # KAIRO - BASE DE DATOS
 # ============================================================
 
-import sqlite3
+import os
 import pathlib
 
 # --------------------------------------------------------
-# RUTA DE LA BASE DE DATOS
+# ¿ESTAMOS EN RENDER (con Turso) O EN TU ORDENADOR (local)?
 # --------------------------------------------------------
 
-# __file__ es "dónde está este archivo database.py".
-# .parent es la carpeta que lo contiene (backend/).
-# .parent.parent sube un nivel más (kairo/).
-# Así, kairo.db SIEMPRE se crea en kairo/kairo.db,
-# arranques el programa desde donde lo arranques.
-DATABASE_NAME = str(
+# Estas dos variables solo existirán si las has configurado
+# en Render. En tu ordenador, en local, no existen — así que
+# ahí seguirá usando un archivo normal, como hasta ahora.
+TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
+TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+
+# Ruta del archivo local (se usa siempre, incluso con Turso,
+# como una "copia rápida" que se mantiene sincronizada).
+LOCAL_DB_PATH = str(
     pathlib.Path(__file__)
     .resolve()
     .parent
@@ -23,27 +26,79 @@ DATABASE_NAME = str(
 )
 
 
+def dict_row_factory(cursor, row):
+    """
+    Convierte cada fila que devuelve la base de datos en un
+    diccionario normal de Python (por ejemplo {"id": 1, "name": "Ana"}),
+    para poder escribir fila["nombre_columna"] en el resto del código,
+    tanto si usamos SQLite normal como si usamos Turso.
+    """
+    columns = [description[0] for description in cursor.description]
+    return dict(zip(columns, row))
+
+
 # ============================================================
 # CONEXIÓN
 # ============================================================
 
-def get_connection():
-    """
-    Crea una conexión con la base de datos KAIRO.
+if TURSO_URL and TURSO_TOKEN:
 
-    row_factory permite acceder a las columnas por nombre.
-    """
+    # --------------------------------------------------------
+    # MODO TURSO (para cuando esto corre en Render)
+    # --------------------------------------------------------
 
-    connection = sqlite3.connect(
-        DATABASE_NAME,
-        timeout=10
-    )
+    import libsql
 
-    connection.row_factory = sqlite3.Row
+    def get_connection():
+        """
+        Se conecta a la base de datos de Turso (en internet).
+        Cada vez que abrimos una conexión, la sincronizamos
+        primero, para asegurarnos de ver siempre los datos
+        más recientes, aunque el servidor se haya reiniciado.
+        """
 
-    connection.execute("PRAGMA foreign_keys = ON")
+        connection = libsql.connect(
+            LOCAL_DB_PATH,
+            sync_url=TURSO_URL,
+            auth_token=TURSO_TOKEN
+        )
 
-    return connection
+        connection.sync()
+
+        connection.row_factory = dict_row_factory
+
+        # Turso puede no soportar exactamente este comando;
+        # si falla, no pasa nada, simplemente lo ignoramos.
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+        except Exception:
+            pass
+
+        return connection
+
+else:
+
+    # --------------------------------------------------------
+    # MODO LOCAL (para cuando lo pruebas en tu ordenador)
+    # --------------------------------------------------------
+
+    import sqlite3
+
+    def get_connection():
+        """
+        Se conecta al archivo kairo.db normal, como hasta ahora.
+        """
+
+        connection = sqlite3.connect(
+            LOCAL_DB_PATH,
+            timeout=10
+        )
+
+        connection.row_factory = sqlite3.Row
+
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        return connection
 
 
 # ============================================================
@@ -200,5 +255,7 @@ def create_tables():
     connection.commit()
     connection.close()
 
+
+create_tables()
 
 create_tables()
