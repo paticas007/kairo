@@ -81,7 +81,6 @@
       <button class="nav-item" data-view="classes">📚 &nbsp;Mis clases</button>
       <button class="nav-item" data-view="tasks">📝 &nbsp;Actividades</button>
       <button class="nav-item" data-view="progress">✅ &nbsp;Seguimiento</button>
-      <button class="nav-item" data-view="evaluation">📊 &nbsp;Evaluación</button>
 
       <div class="nav-spacer"></div>
       <button class="nav-item logout-item" id="teacher-logout-btn">🚪 &nbsp;Cerrar sesión</button>
@@ -142,26 +141,6 @@
             <option value="">Selecciona una clase</option>
           </select>
           <div id="progress-tasks" style="margin-top: 16px;"></div>
-        </div>
-      </div>
-
-      <!-- EVALUACIÓN -->
-      <div class="view hidden" id="teacher-view-evaluation">
-        <div class="view-header">
-          <div><h1>Evaluación</h1><p>Define el peso de cada apartado por clase.</p></div>
-        </div>
-        <div class="panel">
-          <form id="evaluation-form">
-            <select id="evaluation-class" required>
-              <option value="">Selecciona una clase</option>
-            </select>
-            <input id="weight-exams" type="number" min="0" max="100" placeholder="% Exámenes">
-            <input id="weight-tasks" type="number" min="0" max="100" placeholder="% Tareas">
-            <input id="weight-notebook" type="number" min="0" max="100" placeholder="% Cuaderno">
-            <input id="weight-projects" type="number" min="0" max="100" placeholder="% Proyectos">
-            <input id="weight-participation" type="number" min="0" max="100" placeholder="% Participación">
-            <button type="submit" class="primary-btn">Guardar evaluación</button>
-          </form>
         </div>
       </div>
 
@@ -247,6 +226,16 @@
       <input id="class-course" type="text" placeholder="Curso — Ej: 3º ESO" required>
       <input id="class-group" type="text" placeholder="Grupo — Ej: B" required>
       <input id="class-subject" type="text" placeholder="Asignatura — Ej: Matemáticas" required>
+
+      <h3 style="margin: 6px 0 0; font-size: 15px;">Criterios de evaluación</h3>
+      <p class="modal-note">Añade tus categorías de calificación. Deben sumar exactamente 100%.</p>
+
+      <div id="category-rows"></div>
+
+      <button type="button" class="secondary-btn" id="add-category-btn">+ Añadir categoría</button>
+
+      <p id="category-total" class="modal-note">Total: 0%</p>
+
       <button type="submit" class="primary-btn">Crear clase</button>
     </form>
   </div>
@@ -261,6 +250,10 @@
     <form id="create-activity-form">
       <select id="activity-class" required>
         <option value="">Selecciona una clase</option>
+      </select>
+
+      <select id="activity-category">
+        <option value="">Sin categoría de evaluación</option>
       </select>
 
       <div class="choice-group" data-target="activity-type">
