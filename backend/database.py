@@ -5,10 +5,6 @@
 import os
 import pathlib
 
-# --------------------------------------------------------
-# ¿ESTAMOS EN RENDER (con Turso) O EN TU ORDENADOR (local)?
-# --------------------------------------------------------
-
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
 
@@ -22,35 +18,15 @@ LOCAL_DB_PATH = str(
 
 
 def dict_row_factory(cursor_description, row):
-    """
-    Convierte una fila (una tupla simple) en un diccionario
-    normal de Python, usando los nombres de columna que trae
-    la consulta. Así podemos escribir fila["nombre_columna"]
-    tanto si venimos de SQLite normal como de Turso.
-    """
     columns = [description[0] for description in cursor_description]
     return dict(zip(columns, row))
 
 
-# ============================================================
-# CONEXIÓN
-# ============================================================
-
 if TURSO_URL and TURSO_TOKEN:
-
-    # --------------------------------------------------------
-    # MODO TURSO (para cuando esto corre en Render)
-    # --------------------------------------------------------
 
     import libsql
 
     class DictCursorWrapper:
-        """
-        Envuelve un cursor de Turso para que, al pedir los
-        resultados, nos los devuelva como diccionarios en vez
-        de tuplas sueltas — sin necesitar la propiedad
-        'row_factory' que Turso no tiene.
-        """
 
         def __init__(self, raw_cursor):
             self._raw = raw_cursor
@@ -80,12 +56,6 @@ if TURSO_URL and TURSO_TOKEN:
             return self._raw.lastrowid
 
     class DictConnectionWrapper:
-        """
-        Envuelve la conexión de Turso entera, para que se use
-        exactamente igual que una conexión normal de SQLite
-        desde el resto del código (main.py no se entera de
-        que por dentro es distinto).
-        """
 
         def __init__(self, raw_connection):
             self._raw = raw_connection
@@ -104,11 +74,6 @@ if TURSO_URL and TURSO_TOKEN:
             self._raw.close()
 
     def get_connection():
-        """
-        Se conecta a la base de datos de Turso (en internet).
-        La sincronizamos primero, para ver siempre los datos
-        más recientes, aunque el servidor se haya reiniciado.
-        """
 
         raw_connection = libsql.connect(
             LOCAL_DB_PATH,
@@ -127,16 +92,9 @@ if TURSO_URL and TURSO_TOKEN:
 
 else:
 
-    # --------------------------------------------------------
-    # MODO LOCAL (para cuando lo pruebas en tu ordenador)
-    # --------------------------------------------------------
-
     import sqlite3
 
     def get_connection():
-        """
-        Se conecta al archivo kairo.db normal, como hasta ahora.
-        """
 
         connection = sqlite3.connect(
             LOCAL_DB_PATH,
@@ -149,10 +107,6 @@ else:
 
         return connection
 
-
-# ============================================================
-# CREAR TABLAS
-# ============================================================
 
 def create_tables():
 
@@ -213,10 +167,29 @@ def create_tables():
         )
     """)
 
+    # --------------------------------------------------------
+    # CATEGORÍAS DE EVALUACIÓN   <-- NUEVO (sustituye a "evaluations")
+    # --------------------------------------------------------
+
+    # Cada clase define sus propias categorías, con el nombre
+    # y el porcentaje que el profesor decida (deben sumar 100).
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS evaluation_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            class_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            percentage REAL NOT NULL,
+            FOREIGN KEY (class_id)
+                REFERENCES classes(id)
+                ON DELETE CASCADE
+        )
+    """)
+
     connection.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL,
+            category_id INTEGER,
             title TEXT NOT NULL,
             description TEXT DEFAULT '',
             due_date TEXT NOT NULL,
@@ -226,7 +199,10 @@ def create_tables():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (class_id)
                 REFERENCES classes(id)
-                ON DELETE CASCADE
+                ON DELETE CASCADE,
+            FOREIGN KEY (category_id)
+                REFERENCES evaluation_categories(id)
+                ON DELETE SET NULL
         )
     """)
 
@@ -249,6 +225,7 @@ def create_tables():
         CREATE TABLE IF NOT EXISTS exams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL,
+            category_id INTEGER,
             title TEXT NOT NULL,
             description TEXT DEFAULT '',
             exam_date TEXT NOT NULL,
@@ -256,7 +233,10 @@ def create_tables():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (class_id)
                 REFERENCES classes(id)
-                ON DELETE CASCADE
+                ON DELETE CASCADE,
+            FOREIGN KEY (category_id)
+                REFERENCES evaluation_categories(id)
+                ON DELETE SET NULL
         )
     """)
 
@@ -264,6 +244,7 @@ def create_tables():
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             class_id INTEGER NOT NULL,
+            category_id INTEGER,
             title TEXT NOT NULL,
             description TEXT DEFAULT '',
             due_date TEXT NOT NULL,
@@ -271,7 +252,10 @@ def create_tables():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (class_id)
                 REFERENCES classes(id)
-                ON DELETE CASCADE
+                ON DELETE CASCADE,
+            FOREIGN KEY (category_id)
+                REFERENCES evaluation_categories(id)
+                ON DELETE SET NULL
         )
     """)
 
@@ -281,21 +265,6 @@ def create_tables():
             role TEXT NOT NULL,
             user_id INTEGER NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS evaluations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            class_id INTEGER NOT NULL UNIQUE,
-            exams REAL DEFAULT 0,
-            tasks REAL DEFAULT 0,
-            notebook REAL DEFAULT 0,
-            projects REAL DEFAULT 0,
-            participation REAL DEFAULT 0,
-            FOREIGN KEY (class_id)
-                REFERENCES classes(id)
-                ON DELETE CASCADE
         )
     """)
 
