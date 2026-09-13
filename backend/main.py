@@ -98,43 +98,86 @@ class JoinClass(BaseModel):
     student_id: int
     code: str
 
+@app.post("/api/tasks")
+def create_task(data: TaskCreate):
+    connection = get_connection()
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (data.class_id,)
+    ).fetchone()
 
-class TaskCreate(BaseModel):
-    class_id: int
-    title: str
-    description: str = ""
-    due_date: str
-    priority: str = "media"
-    mandatory: bool = True
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    cursor = connection.execute(
+        """
+        INSERT INTO tasks (class_id, category_id, title, description, due_date, priority, mandatory)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            data.class_id, data.category_id, data.title.strip(), data.description.strip(),
+            data.due_date, data.priority, 1 if data.mandatory else 0
+        )
+    )
+    connection.commit()
+    task_id = cursor.lastrowid
+    connection.close()
+    return {"message": "Tarea creada correctamente.", "id": task_id}
+
+@app.post("/api/exams")
+def create_exam(data: ExamCreate):
+    connection = get_connection()
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (data.class_id,)
+    ).fetchone()
+
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    cursor = connection.execute(
+        """
+        INSERT INTO exams (class_id, category_id, title, description, exam_date, importance)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (data.class_id, data.category_id, data.title.strip(), data.description.strip(), data.exam_date, data.importance)
+    )
+    connection.commit()
+    exam_id = cursor.lastrowid
+    connection.close()
+    return {"message": "Examen creado correctamente.", "id": exam_id}
+
+@app.post("/api/projects")
+def create_project(data: ProjectCreate):
+    connection = get_connection()
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (data.class_id,)
+    ).fetchone()
+
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    cursor = connection.execute(
+        """
+        INSERT INTO projects (class_id, category_id, title, description, due_date, priority)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (data.class_id, data.category_id, data.title.strip(), data.description.strip(), data.due_date, data.priority)
+    )
+    connection.commit()
+    project_id = cursor.lastrowid
+    connection.close()
+    return {"message": "Proyecto creado correctamente.", "id": project_id}
 
 
-class ExamCreate(BaseModel):
-    class_id: int
-    title: str
-    description: str = ""
-    exam_date: str
-    importance: str = "media"
+class EvaluationCategoryItem(BaseModel):
+    name: str
+    percentage: float
 
 
-class ProjectCreate(BaseModel):
-    class_id: int
-    title: str
-    description: str = ""
-    due_date: str
-    priority: str = "media"
-
-
-class EvaluationCreate(BaseModel):
-    class_id: int
-    exams: float = 0
-    tasks: float = 0
-    notebook: float = 0
-    projects: float = 0
-    participation: float = 0
-
-
-class TaskCompletionData(BaseModel):
-    student_id: int
+class EvaluationCategoriesData(BaseModel):
+    categories: list[EvaluationCategoryItem]
 
 
 # ============================================================
@@ -670,6 +713,7 @@ def get_class_projects(class_id: int):
 # ============================================================
 
 @app.get("/api/teachers/{teacher_id}/activities")
+@app.get("/api/teachers/{teacher_id}/activities")
 def get_teacher_activities(teacher_id: int):
     connection = get_connection()
 
@@ -677,8 +721,11 @@ def get_teacher_activities(teacher_id: int):
         """
         SELECT 'task' AS type, tasks.id, tasks.title, tasks.description,
                tasks.due_date AS activity_date, tasks.priority, tasks.mandatory,
-               classes.course, classes.group_name, classes.subject
-        FROM tasks INNER JOIN classes ON tasks.class_id = classes.id
+               classes.course, classes.group_name, classes.subject,
+               evaluation_categories.name AS category_name
+        FROM tasks
+        INNER JOIN classes ON tasks.class_id = classes.id
+        LEFT JOIN evaluation_categories ON tasks.category_id = evaluation_categories.id
         WHERE classes.teacher_id = ?
         """,
         (teacher_id,)
@@ -688,8 +735,11 @@ def get_teacher_activities(teacher_id: int):
         """
         SELECT 'exam' AS type, exams.id, exams.title, exams.description,
                exams.exam_date AS activity_date, exams.importance AS priority, 1 AS mandatory,
-               classes.course, classes.group_name, classes.subject
-        FROM exams INNER JOIN classes ON exams.class_id = classes.id
+               classes.course, classes.group_name, classes.subject,
+               evaluation_categories.name AS category_name
+        FROM exams
+        INNER JOIN classes ON exams.class_id = classes.id
+        LEFT JOIN evaluation_categories ON exams.category_id = evaluation_categories.id
         WHERE classes.teacher_id = ?
         """,
         (teacher_id,)
@@ -699,8 +749,11 @@ def get_teacher_activities(teacher_id: int):
         """
         SELECT 'project' AS type, projects.id, projects.title, projects.description,
                projects.due_date AS activity_date, projects.priority, 1 AS mandatory,
-               classes.course, classes.group_name, classes.subject
-        FROM projects INNER JOIN classes ON projects.class_id = classes.id
+               classes.course, classes.group_name, classes.subject,
+               evaluation_categories.name AS category_name
+        FROM projects
+        INNER JOIN classes ON projects.class_id = classes.id
+        LEFT JOIN evaluation_categories ON projects.category_id = evaluation_categories.id
         WHERE classes.teacher_id = ?
         """,
         (teacher_id,)
@@ -716,39 +769,61 @@ def get_teacher_activities(teacher_id: int):
 
     return activities
 
-
 # ============================================================
 # EVALUACIÓN
 # ============================================================
 
-@app.post("/api/classes/evaluation")
-def save_evaluation(data: EvaluationCreate):
-    total = data.exams + data.tasks + data.notebook + data.projects + data.participation
-    if total > 100:
-        raise HTTPException(status_code=400, detail="Los porcentajes no pueden superar el 100%.")
+@app.post("/api/classes/{class_id}/evaluation-categories")
+def save_evaluation_categories(class_id: int, data: EvaluationCategoriesData):
+
+    total = sum(category.percentage for category in data.categories)
+
+    if abs(total - 100) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Los porcentajes deben sumar exactamente 100% (ahora mismo suman {total}%)."
+        )
 
     connection = get_connection()
+
     class_exists = connection.execute(
-        "SELECT id FROM classes WHERE id = ?", (data.class_id,)
+        "SELECT id FROM classes WHERE id = ?", (class_id,)
     ).fetchone()
 
     if not class_exists:
         connection.close()
         raise HTTPException(status_code=404, detail="La clase no existe.")
 
+    # Borramos las categorías anteriores de esta clase y guardamos las nuevas.
     connection.execute(
-        """
-        INSERT INTO evaluations (class_id, exams, tasks, notebook, projects, participation)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(class_id) DO UPDATE SET
-            exams = excluded.exams, tasks = excluded.tasks, notebook = excluded.notebook,
-            projects = excluded.projects, participation = excluded.participation
-        """,
-        (data.class_id, data.exams, data.tasks, data.notebook, data.projects, data.participation)
+        "DELETE FROM evaluation_categories WHERE class_id = ?", (class_id,)
     )
+
+    for category in data.categories:
+        connection.execute(
+            "INSERT INTO evaluation_categories (class_id, name, percentage) VALUES (?, ?, ?)",
+            (class_id, category.name.strip(), category.percentage)
+        )
+
     connection.commit()
     connection.close()
-    return {"message": "Evaluación guardada correctamente."}
+
+    return {"message": "Categorías de evaluación guardadas correctamente."}
+
+
+@app.get("/api/classes/{class_id}/evaluation-categories")
+def get_evaluation_categories(class_id: int):
+
+    connection = get_connection()
+
+    categories = connection.execute(
+        "SELECT * FROM evaluation_categories WHERE class_id = ? ORDER BY id",
+        (class_id,)
+    ).fetchall()
+
+    connection.close()
+
+    return [dict(row) for row in categories]
 
 
 # ============================================================
