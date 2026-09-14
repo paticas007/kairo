@@ -807,6 +807,12 @@ def get_student_plan(student_id: int):
         class_id = class_item["id"]
         subject = class_item["subject"]
 
+        # ------------------------------------------------------
+        # TAREAS: urgencia por cercanía, no por lo que puso
+        # el profesor. 2 días o menos (o atrasada) = ALTA.
+        # Exactamente 3 días = BAJA. Más de 3, no aparece.
+        # ------------------------------------------------------
+
         tasks = connection.execute(
             """
             SELECT * FROM tasks t
@@ -821,13 +827,26 @@ def get_student_plan(student_id: int):
 
         for task in tasks:
             days_left = calculate_days_left(task["due_date"])
-            if days_left <= 14:
-                plan.append({
-                    "type": "task", "id": task["id"], "title": task["title"],
-                    "description": task["description"], "subject": subject,
-                    "date": task["due_date"], "days_left": days_left,
-                    "priority": task["priority"], "mandatory": bool(task["mandatory"])
-                })
+
+            if days_left <= 2:
+                computed_priority = "alta"
+            elif days_left == 3:
+                computed_priority = "baja"
+            else:
+                continue
+
+            plan.append({
+                "type": "task", "id": task["id"], "title": task["title"],
+                "description": task["description"], "subject": subject,
+                "date": task["due_date"], "days_left": days_left,
+                "priority": computed_priority, "mandatory": bool(task["mandatory"])
+            })
+
+        # ------------------------------------------------------
+        # EXÁMENES: la ventana de aviso depende de la
+        # importancia. Si quedan 2 días o menos, siempre ALTA,
+        # sin importar la importancia original.
+        # ------------------------------------------------------
 
         exams = connection.execute(
             "SELECT * FROM exams WHERE class_id = ?", (class_id,)
@@ -835,13 +854,30 @@ def get_student_plan(student_id: int):
 
         for exam in exams:
             days_left = calculate_days_left(exam["exam_date"])
-            if 0 <= days_left <= 10:
-                plan.append({
-                    "type": "exam_preparation", "id": exam["id"],
-                    "title": f"Preparar: {exam['title']}", "description": exam["description"],
-                    "subject": subject, "date": exam["exam_date"], "days_left": days_left,
-                    "priority": exam["importance"], "mandatory": False
-                })
+            importance = str(exam["importance"]).lower()
+
+            if importance == "alta":
+                window = 7
+            elif importance == "media":
+                window = 5
+            else:
+                window = 3
+
+            if not (0 <= days_left <= window):
+                continue
+
+            computed_priority = "alta" if days_left <= 2 else importance
+
+            plan.append({
+                "type": "exam_preparation", "id": exam["id"],
+                "title": f"Preparar: {exam['title']}", "description": exam["description"],
+                "subject": subject, "date": exam["exam_date"], "days_left": days_left,
+                "priority": computed_priority, "mandatory": False
+            })
+
+        # ------------------------------------------------------
+        # PROYECTOS (sin cambios todavía, pendiente de definir)
+        # ------------------------------------------------------
 
         projects = connection.execute(
             "SELECT * FROM projects WHERE class_id = ?", (class_id,)
