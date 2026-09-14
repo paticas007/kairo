@@ -116,6 +116,29 @@ function toggleMandatoryVisibility(type) {
 }
 
 // ============================================================
+// BLOQUEO DE BOTONES MIENTRAS SE GUARDA   <-- NUEVO
+// ============================================================
+
+function lockButton(form) {
+  const button = form.querySelector('button[type="submit"]');
+  if (button) {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent;
+    button.textContent = "Procesando...";
+  }
+  return button;
+}
+
+function unlockButton(button) {
+  if (button) {
+    button.disabled = false;
+    if (button.dataset.originalText) {
+      button.textContent = button.dataset.originalText;
+    }
+  }
+}
+
+// ============================================================
 // CATEGORÍAS DE EVALUACIÓN
 // ============================================================
 
@@ -233,6 +256,7 @@ window.showRegister = showRegister;
 
 async function handleRegister(event) {
   event.preventDefault();
+  const submitButton = lockButton(event.target);
 
   const data = {
     name: document.getElementById("register-name")?.value.trim(),
@@ -264,17 +288,21 @@ async function handleRegister(event) {
 
   } catch (error) {
     alert(error.message);
+  } finally {
+    unlockButton(submitButton);
   }
 }
 
 async function handleLogin(event) {
   event.preventDefault();
+  const submitButton = lockButton(event.target);
 
   const email = document.getElementById("login-email")?.value.trim();
   const password = document.getElementById("login-password")?.value;
 
   if (!selectedRole) {
     alert("Selecciona primero si eres estudiante o profesor.");
+    unlockButton(submitButton);
     return;
   }
 
@@ -290,6 +318,8 @@ async function handleLogin(event) {
 
   } catch (error) {
     alert(error.message);
+  } finally {
+    unlockButton(submitButton);
   }
 }
 
@@ -435,6 +465,7 @@ function updateClassSelectors() {
 
 async function handleCreateClass(event) {
   event.preventDefault();
+  const submitButton = lockButton(event.target);
 
   try {
     const course = document.getElementById("class-course")?.value.trim();
@@ -479,6 +510,8 @@ async function handleCreateClass(event) {
 
   } catch (error) {
     alert(error.message);
+  } finally {
+    unlockButton(submitButton);
   }
 }
 
@@ -506,6 +539,7 @@ async function handleActivityClassChange(event) {
 
 async function handleCreateActivity(event) {
   event.preventDefault();
+  const submitButton = lockButton(event.target);
 
   const classSelect = document.getElementById("activity-class");
   const categorySelect = document.getElementById("activity-category");
@@ -518,10 +552,12 @@ async function handleCreateActivity(event) {
 
   if (!classSelect || !classSelect.value) {
     alert("Selecciona una clase.");
+    unlockButton(submitButton);
     return;
   }
   if (!title || !date) {
     alert("Introduce un título y una fecha.");
+    unlockButton(submitButton);
     return;
   }
 
@@ -558,6 +594,8 @@ async function handleCreateActivity(event) {
 
   } catch (error) {
     alert(error.message);
+  } finally {
+    unlockButton(submitButton);
   }
 }
 
@@ -755,10 +793,12 @@ async function loadStudentClasses() {
 
 async function handleJoinClass(event) {
   event.preventDefault();
+  const submitButton = lockButton(event.target);
 
   const code = document.getElementById("join-code")?.value.trim().toUpperCase();
   if (!code) {
     alert("Introduce el código de la clase.");
+    unlockButton(submitButton);
     return;
   }
 
@@ -776,6 +816,8 @@ async function handleJoinClass(event) {
 
   } catch (error) {
     alert(error.message);
+  } finally {
+    unlockButton(submitButton);
   }
 }
 
