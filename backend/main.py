@@ -10,8 +10,9 @@ from pydantic import BaseModel
 import hashlib
 import secrets
 import pathlib
+import math
 
-from datetime import date
+from datetime import date, datetime
 
 try:
     from backend.database import get_connection, create_tables
@@ -22,6 +23,17 @@ except ImportError:
 app = FastAPI(title="KAIRO API", version="1.0.0")
 
 create_tables()
+
+
+# ============================================================
+# CONSTANTES DEL ALGORITMO DE PRIORIZACIÓN
+# ============================================================
+
+DEFAULT_CATEGORY_WEIGHT = 10.0     # peso si una actividad no tiene categoría
+MAX_PLAN_WINDOW_HOURS = 24 * 30    # no mostrar nada a más de 30 días vista
+URGENCIA_MAXIMA = 1000.0           # tope para actividades ya atrasadas
+VENTANA_CRITICA_HORAS = 48.0       # a partir de aquí, la curva se dispara
+CONSTANTE_EXPONENCIAL = 8.0        # controla lo agresiva que es la subida
 
 
 # ============================================================
@@ -58,6 +70,84 @@ def calculate_days_left(target_date: str) -> int:
         return (target - today).days
     except ValueError:
         return 9999
+
+
+def calculate_hours_left(target_date_str: str) -> float:
+    """
+    Calcula las horas exactas que quedan hasta una fecha.
+    Si la fecha no trae hora (solo "YYYY-MM-DD"), asumimos que
+    el límite es al final de ese día (23:59), no a medianoche.
+    """
+    try:
+        if len(target_date_str) == 10:
+            target = datetime.fromisoformat(target_date_str + "T23:59:00")
+        else:
+            target = datetime.fromisoformat(target_date_str)
+    except ValueError:
+        return 999999.0
+
+    now = datetime.now()
+    delta = target - now
+    return delta.total_seconds() / 3600
+
+
+def calculate_priority_score(category_weight: float, hours_left: float) -> float:
+    """
+    Priority Score = peso_categoria x factor_urgencia.
+
+    A menor tiempo restante y mayor peso de categoría, mayor score.
+    Bajo 48 horas, la urgencia crece de forma exponencial.
+    """
+
+    if hours_left <= 0:
+        factor_urgencia = URGENCIA_MAXIMA
+    elif hours_left < VENTANA_CRITICA_HORAS:
+        factor_urgencia = math.exp(
+            (VENTANA_CRITICA_HORAS - hours_left) / CONSTANTE_EXPONENCIAL
+        )
+    else:
+        factor_urgencia = VENTANA_CRITICA_HORAS / hours_left
+
+    return category_weight * factor_urgencia
+
+
+def priority_label(hours_left: float) -> str:
+    """
+    Solo para mostrar un color/etiqueta en la interfaz.
+    El orden real de la lista lo decide priority_score, no esto.
+    """
+    if hours_left < VENTANA_CRITICA_HORAS:
+        return "alta"
+    elif hours_left < 24 * 7:
+        return "media"
+    else:
+        return "baja"
+
+
+def prioritize_activities(activities: list[dict]) -> list[dict]:
+    """
+    Función PURA de priorización. No modifica la lista de entrada;
+    devuelve una lista nueva, ordenada de mayor a menor prioridad.
+
+    Cada actividad de entrada debe tener:
+      - "category_weight": float (0-100)
+      - "hours_left": float (negativo si está atrasada)
+    """
+
+    result = []
+
+    for activity in activities:
+        score = calculate_priority_score(
+            activity["category_weight"],
+            activity["hours_left"]
+        )
+        activity_with_score = dict(activity)
+        activity_with_score["priority_score"] = score
+        result.append(activity_with_score)
+
+    result.sort(key=lambda item: item["priority_score"], reverse=True)
+
+    return result
 
 
 # ============================================================
@@ -801,21 +891,21 @@ def get_student_plan(student_id: int):
         (student_id,)
     ).fetchall()
 
-    plan = []
+    raw_activities = []
 
     for class_item in classes:
         class_id = class_item["id"]
         subject = class_item["subject"]
 
-        # ------------------------------------------------------
-        # TAREAS: urgencia por cercanía, no por lo que puso
-        # el profesor. 2 días o menos (o atrasada) = ALTA.
-        # Exactamente 3 días = BAJA. Más de 3, no aparece.
-        # ------------------------------------------------------
+        # --------------------------------------------------------
+        # TAREAS (sin completar por este alumno)
+        # --------------------------------------------------------
 
         tasks = connection.execute(
             """
-            SELECT * FROM tasks t
+            SELECT t.*, ec.percentage AS category_weight
+            FROM tasks t
+            LEFT JOIN evaluation_categories ec ON t.category_id = ec.id
             WHERE t.class_id = ?
             AND NOT EXISTS (
                 SELECT 1 FROM task_completions tc
@@ -826,77 +916,91 @@ def get_student_plan(student_id: int):
         ).fetchall()
 
         for task in tasks:
-            days_left = calculate_days_left(task["due_date"])
-
-            if days_left <= 2:
-                computed_priority = "alta"
-            elif days_left == 3:
-                computed_priority = "baja"
-            else:
+            hours_left = calculate_hours_left(task["due_date"])
+            if hours_left > MAX_PLAN_WINDOW_HOURS:
                 continue
 
-            plan.append({
+            weight = task["category_weight"]
+            if weight is None:
+                weight = DEFAULT_CATEGORY_WEIGHT
+
+            raw_activities.append({
                 "type": "task", "id": task["id"], "title": task["title"],
                 "description": task["description"], "subject": subject,
-                "date": task["due_date"], "days_left": days_left,
-                "priority": computed_priority, "mandatory": bool(task["mandatory"])
+                "date": task["due_date"], "days_left": calculate_days_left(task["due_date"]),
+                "hours_left": hours_left, "category_weight": weight,
+                "priority": priority_label(hours_left),
+                "mandatory": bool(task["mandatory"])
             })
 
-        # ------------------------------------------------------
-        # EXÁMENES: la ventana de aviso depende de la
-        # importancia. Si quedan 2 días o menos, siempre ALTA,
-        # sin importar la importancia original.
-        # ------------------------------------------------------
+        # --------------------------------------------------------
+        # EXÁMENES
+        # --------------------------------------------------------
 
         exams = connection.execute(
-            "SELECT * FROM exams WHERE class_id = ?", (class_id,)
+            """
+            SELECT e.*, ec.percentage AS category_weight
+            FROM exams e
+            LEFT JOIN evaluation_categories ec ON e.category_id = ec.id
+            WHERE e.class_id = ?
+            """,
+            (class_id,)
         ).fetchall()
 
         for exam in exams:
-            days_left = calculate_days_left(exam["exam_date"])
-            importance = str(exam["importance"]).lower()
-
-            if importance == "alta":
-                window = 7
-            elif importance == "media":
-                window = 5
-            else:
-                window = 3
-
-            if not (0 <= days_left <= window):
+            hours_left = calculate_hours_left(exam["exam_date"])
+            if hours_left > MAX_PLAN_WINDOW_HOURS:
                 continue
 
-            computed_priority = "alta" if days_left <= 2 else importance
+            weight = exam["category_weight"]
+            if weight is None:
+                weight = DEFAULT_CATEGORY_WEIGHT
 
-            plan.append({
+            raw_activities.append({
                 "type": "exam_preparation", "id": exam["id"],
                 "title": f"Preparar: {exam['title']}", "description": exam["description"],
-                "subject": subject, "date": exam["exam_date"], "days_left": days_left,
-                "priority": computed_priority, "mandatory": False
+                "subject": subject, "date": exam["exam_date"],
+                "days_left": calculate_days_left(exam["exam_date"]),
+                "hours_left": hours_left, "category_weight": weight,
+                "priority": priority_label(hours_left),
+                "mandatory": False
             })
 
-        # ------------------------------------------------------
-        # PROYECTOS (sin cambios todavía, pendiente de definir)
-        # ------------------------------------------------------
+        # --------------------------------------------------------
+        # PROYECTOS
+        # --------------------------------------------------------
 
         projects = connection.execute(
-            "SELECT * FROM projects WHERE class_id = ?", (class_id,)
+            """
+            SELECT p.*, ec.percentage AS category_weight
+            FROM projects p
+            LEFT JOIN evaluation_categories ec ON p.category_id = ec.id
+            WHERE p.class_id = ?
+            """,
+            (class_id,)
         ).fetchall()
 
         for project in projects:
-            days_left = calculate_days_left(project["due_date"])
-            if days_left <= 21:
-                plan.append({
-                    "type": "project", "id": project["id"], "title": project["title"],
-                    "description": project["description"], "subject": subject,
-                    "date": project["due_date"], "days_left": days_left,
-                    "priority": project["priority"], "mandatory": True
-                })
+            hours_left = calculate_hours_left(project["due_date"])
+            if hours_left > MAX_PLAN_WINDOW_HOURS:
+                continue
+
+            weight = project["category_weight"]
+            if weight is None:
+                weight = DEFAULT_CATEGORY_WEIGHT
+
+            raw_activities.append({
+                "type": "project", "id": project["id"], "title": project["title"],
+                "description": project["description"], "subject": subject,
+                "date": project["due_date"], "days_left": calculate_days_left(project["due_date"]),
+                "hours_left": hours_left, "category_weight": weight,
+                "priority": priority_label(hours_left),
+                "mandatory": True
+            })
 
     connection.close()
 
-    priority_order = {"alta": 0, "high": 0, "media": 1, "medium": 1, "baja": 2, "low": 2}
-    plan.sort(key=lambda item: (item["days_left"], priority_order.get(str(item["priority"]).lower(), 1)))
+    plan = prioritize_activities(raw_activities)
 
     return {"plan": plan}
 
