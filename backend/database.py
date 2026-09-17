@@ -131,6 +131,8 @@ def create_tables():
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
             center TEXT NOT NULL,
+            security_question TEXT,
+            security_answer TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -144,6 +146,8 @@ def create_tables():
             password TEXT NOT NULL,
             course TEXT NOT NULL,
             center TEXT NOT NULL,
+            security_question TEXT,
+            security_answer TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -273,13 +277,28 @@ def create_tables():
         )
     """)
 
-    # Parche para bases de datos que ya existían antes de
-    # tener la columna category_id — si ya la tienen, esto
-    # falla en silencio y no pasa nada.
+    # --------------------------------------------------------
+    # PARCHES para bases de datos que ya existían de antes
+    # --------------------------------------------------------
+
     for table_name in ["tasks", "exams", "projects"]:
         try:
             connection.execute(
                 f"ALTER TABLE {table_name} ADD COLUMN category_id INTEGER"
+            )
+        except Exception:
+            pass
+
+    for table_name in ["teachers", "students"]:
+        try:
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN security_question TEXT"
+            )
+        except Exception:
+            pass
+        try:
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN security_answer TEXT"
             )
         except Exception:
             pass
