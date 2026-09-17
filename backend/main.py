@@ -29,11 +29,11 @@ create_tables()
 # CONSTANTES DEL ALGORITMO DE PRIORIZACIÓN
 # ============================================================
 
-DEFAULT_CATEGORY_WEIGHT = 10.0     # peso si una actividad no tiene categoría
-MAX_PLAN_WINDOW_HOURS = 24 * 30    # no mostrar nada a más de 30 días vista
-URGENCIA_MAXIMA = 1000.0           # tope para actividades ya atrasadas
-VENTANA_CRITICA_HORAS = 48.0       # a partir de aquí, la curva se dispara
-CONSTANTE_EXPONENCIAL = 8.0        # controla lo agresiva que es la subida
+DEFAULT_CATEGORY_WEIGHT = 10.0
+MAX_PLAN_WINDOW_HOURS = 24 * 30
+URGENCIA_MAXIMA = 1000.0
+VENTANA_CRITICA_HORAS = 48.0
+CONSTANTE_EXPONENCIAL = 8.0
 
 
 # ============================================================
@@ -44,6 +44,10 @@ def hash_password(password: str) -> str:
     return hashlib.pbkdf2_hmac(
         "sha256", password.encode("utf-8"), b"kairo_salt", 100000
     ).hex()
+
+
+def normalize_answer(answer: str) -> str:
+    return answer.strip().lower()
 
 
 def generate_token() -> str:
@@ -73,11 +77,6 @@ def calculate_days_left(target_date: str) -> int:
 
 
 def calculate_hours_left(target_date_str: str) -> float:
-    """
-    Calcula las horas exactas que quedan hasta una fecha.
-    Si la fecha no trae hora (solo "YYYY-MM-DD"), asumimos que
-    el límite es al final de ese día (23:59), no a medianoche.
-    """
     try:
         if len(target_date_str) == 10:
             target = datetime.fromisoformat(target_date_str + "T23:59:00")
@@ -92,13 +91,6 @@ def calculate_hours_left(target_date_str: str) -> float:
 
 
 def calculate_priority_score(category_weight: float, hours_left: float) -> float:
-    """
-    Priority Score = peso_categoria x factor_urgencia.
-
-    A menor tiempo restante y mayor peso de categoría, mayor score.
-    Bajo 48 horas, la urgencia crece de forma exponencial.
-    """
-
     if hours_left <= 0:
         factor_urgencia = URGENCIA_MAXIMA
     elif hours_left < VENTANA_CRITICA_HORAS:
@@ -112,10 +104,6 @@ def calculate_priority_score(category_weight: float, hours_left: float) -> float
 
 
 def priority_label(hours_left: float) -> str:
-    """
-    Solo para mostrar un color/etiqueta en la interfaz.
-    El orden real de la lista lo decide priority_score, no esto.
-    """
     if hours_left < VENTANA_CRITICA_HORAS:
         return "alta"
     elif hours_left < 24 * 7:
@@ -125,15 +113,6 @@ def priority_label(hours_left: float) -> str:
 
 
 def prioritize_activities(activities: list[dict]) -> list[dict]:
-    """
-    Función PURA de priorización. No modifica la lista de entrada;
-    devuelve una lista nueva, ordenada de mayor a menor prioridad.
-
-    Cada actividad de entrada debe tener:
-      - "category_weight": float (0-100)
-      - "hours_left": float (negativo si está atrasada)
-    """
-
     result = []
 
     for activity in activities:
@@ -160,6 +139,8 @@ class TeacherCreate(BaseModel):
     email: str
     password: str
     center: str
+    security_question: str
+    security_answer: str
 
 
 class StudentCreate(BaseModel):
@@ -169,6 +150,8 @@ class StudentCreate(BaseModel):
     password: str
     course: str
     center: str
+    security_question: str
+    security_answer: str
 
 
 class LoginData(BaseModel):
@@ -230,6 +213,18 @@ class TaskCompletionData(BaseModel):
     student_id: int
 
 
+class PasswordRecoveryQuestionRequest(BaseModel):
+    email: str
+    role: str
+
+
+class PasswordRecoveryResetRequest(BaseModel):
+    email: str
+    role: str
+    answer: str
+    new_password: str
+
+
 # ============================================================
 # PROFESORES
 # ============================================================
@@ -246,12 +241,14 @@ def create_teacher(data: TeacherCreate):
 
     cursor = connection.execute(
         """
-        INSERT INTO teachers (name, surname, email, password, center)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO teachers
+        (name, surname, email, password, center, security_question, security_answer)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data.name.strip(), data.surname.strip(), data.email.lower().strip(),
-            hash_password(data.password), data.center.strip()
+            hash_password(data.password), data.center.strip(),
+            data.security_question, hash_password(normalize_answer(data.security_answer))
         )
     )
     connection.commit()
@@ -276,12 +273,14 @@ def create_student(data: StudentCreate):
 
     cursor = connection.execute(
         """
-        INSERT INTO students (name, surname, email, password, course, center)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO students
+        (name, surname, email, password, course, center, security_question, security_answer)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data.name.strip(), data.surname.strip(), data.email.lower().strip(),
-            hash_password(data.password), data.course.strip(), data.center.strip()
+            hash_password(data.password), data.course.strip(), data.center.strip(),
+            data.security_question, hash_password(normalize_answer(data.security_answer))
         )
     )
     connection.commit()
@@ -326,6 +325,66 @@ def login(data: LoginData):
 
 
 # ============================================================
+# RECUPERACIÓN DE CONTRASEÑA
+# ============================================================
+
+@app.post("/api/password-recovery/question")
+def get_security_question(data: PasswordRecoveryQuestionRequest):
+    role = data.role.lower().strip()
+    if role not in ["teacher", "student"]:
+        raise HTTPException(status_code=400, detail="Rol no válido.")
+
+    connection = get_connection()
+    table = "teachers" if role == "teacher" else "students"
+
+    user = connection.execute(
+        f"SELECT security_question FROM {table} WHERE email = ?",
+        (data.email.lower().strip(),)
+    ).fetchone()
+
+    connection.close()
+
+    if not user or not user["security_question"]:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontró esa cuenta, o no tiene pregunta de seguridad configurada."
+        )
+
+    return {"question": user["security_question"]}
+
+
+@app.post("/api/password-recovery/reset")
+def reset_password(data: PasswordRecoveryResetRequest):
+    role = data.role.lower().strip()
+    if role not in ["teacher", "student"]:
+        raise HTTPException(status_code=400, detail="Rol no válido.")
+
+    connection = get_connection()
+    table = "teachers" if role == "teacher" else "students"
+
+    user = connection.execute(
+        f"SELECT * FROM {table} WHERE email = ?", (data.email.lower().strip(),)
+    ).fetchone()
+
+    if not user:
+        connection.close()
+        raise HTTPException(status_code=404, detail="No se encontró esa cuenta.")
+
+    if user["security_answer"] != hash_password(normalize_answer(data.answer)):
+        connection.close()
+        raise HTTPException(status_code=401, detail="La respuesta no es correcta.")
+
+    connection.execute(
+        f"UPDATE {table} SET password = ? WHERE id = ?",
+        (hash_password(data.new_password), user["id"])
+    )
+    connection.commit()
+    connection.close()
+
+    return {"message": "Contraseña actualizada correctamente."}
+
+
+# ============================================================
 # RESTAURAR SESIÓN
 # ============================================================
 
@@ -351,6 +410,7 @@ def get_current_user(token: str):
 
     user_data = dict(user)
     user_data.pop("password", None)
+    user_data.pop("security_answer", None)
     return {"role": session["role"], "user": user_data}
 
 
@@ -897,10 +957,6 @@ def get_student_plan(student_id: int):
         class_id = class_item["id"]
         subject = class_item["subject"]
 
-        # --------------------------------------------------------
-        # TAREAS (sin completar por este alumno)
-        # --------------------------------------------------------
-
         tasks = connection.execute(
             """
             SELECT t.*, ec.percentage AS category_weight
@@ -933,10 +989,6 @@ def get_student_plan(student_id: int):
                 "mandatory": bool(task["mandatory"])
             })
 
-        # --------------------------------------------------------
-        # EXÁMENES
-        # --------------------------------------------------------
-
         exams = connection.execute(
             """
             SELECT e.*, ec.percentage AS category_weight
@@ -965,10 +1017,6 @@ def get_student_plan(student_id: int):
                 "priority": priority_label(hours_left),
                 "mandatory": False
             })
-
-        # --------------------------------------------------------
-        # PROYECTOS
-        # --------------------------------------------------------
 
         projects = connection.execute(
             """
