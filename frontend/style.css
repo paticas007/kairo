@@ -142,6 +142,7 @@ button { border: none; }
   transition: 0.2s;
 }
 .primary-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.primary-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 .secondary-btn {
   padding: 10px 15px;
@@ -393,6 +394,86 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   margin-bottom: 0;
 }
 
+/* ============================================================
+   AVISOS FLOTANTES (sustituyen a alert())   <-- NUEVO
+============================================================ */
+
+#toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 340px;
+}
+
+.toast {
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateX(30px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  white-space: pre-line;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.toast-success { border-left: 4px solid var(--success); }
+.toast-error { border-left: 4px solid var(--danger); }
+.toast-info { border-left: 4px solid var(--accent); }
+
+/* ============================================================
+   CONFIRMACIÓN PROPIA (sustituye a confirm())   <-- NUEVO
+============================================================ */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.confirm-overlay.show {
+  opacity: 1;
+}
+
+.confirm-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: min(420px, 90vw);
+}
+
+.confirm-box p {
+  margin: 0 0 20px;
+  white-space: pre-line;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -451,6 +532,13 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  #toast-container {
+    left: 16px;
+    right: 16px;
+    max-width: none;
+    top: 16px;
   }
 }
 
