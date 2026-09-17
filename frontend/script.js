@@ -46,6 +46,12 @@ function initializeKairo() {
   const activityClassSelect = document.getElementById("activity-class");
   if (activityClassSelect) activityClassSelect.addEventListener("change", handleActivityClassChange);
 
+  const recoveryFindBtn = document.getElementById("recovery-find-btn");
+  if (recoveryFindBtn) recoveryFindBtn.addEventListener("click", handleFindRecoveryAccount);
+
+  const recoveryResetForm = document.getElementById("recovery-reset-form");
+  if (recoveryResetForm) recoveryResetForm.addEventListener("submit", handleResetPassword);
+
   document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
     btn.addEventListener("click", () => {
       const shell = btn.closest(".shell");
@@ -66,6 +72,66 @@ function initializeKairo() {
   if (studentToday) studentToday.textContent = todayText;
 
   restoreSession();
+}
+
+// ============================================================
+// AVISOS FLOTANTES (sustituyen a alert())   <-- NUEVO
+// ============================================================
+
+function showToast(message, type = "info") {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add("show"));
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
+
+// ============================================================
+// CONFIRMACIÓN PROPIA (sustituye a confirm())   <-- NUEVO
+// ============================================================
+
+function showConfirm(message) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p>${message}</p>
+        <div class="confirm-actions">
+          <button type="button" class="secondary-btn" id="confirm-cancel">Cancelar</button>
+          <button type="button" class="primary-btn danger-btn" id="confirm-ok">Confirmar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => overlay.classList.add("show"));
+
+    const cleanup = (result) => {
+      overlay.classList.remove("show");
+      setTimeout(() => overlay.remove(), 200);
+      resolve(result);
+    };
+
+    overlay.querySelector("#confirm-ok").addEventListener("click", () => cleanup(true));
+    overlay.querySelector("#confirm-cancel").addEventListener("click", () => cleanup(false));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) cleanup(false);
+    });
+  });
 }
 
 // ============================================================
@@ -116,7 +182,7 @@ function toggleMandatoryVisibility(type) {
 }
 
 // ============================================================
-// BLOQUEO DE BOTONES MIENTRAS SE GUARDA   <-- NUEVO
+// BLOQUEO DE BOTONES MIENTRAS SE GUARDA
 // ============================================================
 
 function lockButton(form) {
@@ -264,12 +330,19 @@ async function handleRegister(event) {
     email: document.getElementById("register-email")?.value.trim(),
     password: document.getElementById("register-password")?.value,
     course: document.getElementById("register-course")?.value.trim(),
-    center: document.getElementById("register-center")?.value.trim()
+    center: document.getElementById("register-center")?.value.trim(),
+    security_question: document.getElementById("register-security-question")?.value,
+    security_answer: document.getElementById("register-security-answer")?.value.trim()
   };
 
   try {
     if (!data.name || !data.surname || !data.email || !data.password || !data.center) {
-      alert("Rellena todos los campos.");
+      showToast("Rellena todos los campos.", "error");
+      return;
+    }
+
+    if (!data.security_question || !data.security_answer) {
+      showToast("Elige una pregunta de seguridad y escribe tu respuesta.", "error");
       return;
     }
 
@@ -278,16 +351,16 @@ async function handleRegister(event) {
     } else if (selectedRole === "student") {
       await api("/api/students", { method: "POST", body: JSON.stringify(data) });
     } else {
-      alert("Selecciona primero tu rol.");
+      showToast("Selecciona primero tu rol.", "error");
       return;
     }
 
-    alert("Cuenta creada correctamente.");
+    showToast("Cuenta creada correctamente.", "success");
     event.target.reset();
     showLogin();
 
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   } finally {
     unlockButton(submitButton);
   }
@@ -301,7 +374,7 @@ async function handleLogin(event) {
   const password = document.getElementById("login-password")?.value;
 
   if (!selectedRole) {
-    alert("Selecciona primero si eres estudiante o profesor.");
+    showToast("Selecciona primero si eres estudiante o profesor.", "error");
     unlockButton(submitButton);
     return;
   }
@@ -317,7 +390,7 @@ async function handleLogin(event) {
     await restoreSession();
 
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   } finally {
     unlockButton(submitButton);
   }
@@ -375,6 +448,73 @@ async function handleLogout() {
 }
 
 // ============================================================
+// RECUPERACIÓN DE CONTRASEÑA   <-- NUEVO
+// ============================================================
+
+function openPasswordRecovery() {
+  document.getElementById("recovery-step-email")?.classList.remove("hidden");
+  document.getElementById("recovery-reset-form")?.classList.add("hidden");
+  const emailInput = document.getElementById("recovery-email");
+  if (emailInput) emailInput.value = "";
+  document.getElementById("modal-password-recovery")?.showModal();
+}
+window.openPasswordRecovery = openPasswordRecovery;
+
+async function handleFindRecoveryAccount() {
+  const email = document.getElementById("recovery-email")?.value.trim();
+
+  if (!email) {
+    showToast("Introduce tu correo electrónico.", "error");
+    return;
+  }
+  if (!selectedRole) {
+    showToast("Selecciona primero si eres profesor o alumno, antes de recuperar la cuenta.", "error");
+    return;
+  }
+
+  try {
+    const result = await api("/api/password-recovery/question", {
+      method: "POST",
+      body: JSON.stringify({ email, role: selectedRole })
+    });
+
+    const questionLabel = document.getElementById("recovery-question");
+    if (questionLabel) questionLabel.textContent = result.question;
+
+    document.getElementById("recovery-step-email")?.classList.add("hidden");
+    document.getElementById("recovery-reset-form")?.classList.remove("hidden");
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const submitButton = lockButton(event.target);
+
+  const email = document.getElementById("recovery-email")?.value.trim();
+  const answer = document.getElementById("recovery-answer")?.value;
+  const newPassword = document.getElementById("recovery-new-password")?.value;
+
+  try {
+    await api("/api/password-recovery/reset", {
+      method: "POST",
+      body: JSON.stringify({ email, role: selectedRole, answer, new_password: newPassword })
+    });
+
+    showToast("Contraseña actualizada. Ya puedes iniciar sesión.", "success");
+    document.getElementById("modal-password-recovery")?.close();
+    event.target.reset();
+
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    unlockButton(submitButton);
+  }
+}
+
+// ============================================================
 // DASHBOARD PROFESOR
 // ============================================================
 
@@ -426,7 +566,7 @@ function focusClassInTasks(classId) {
 window.focusClassInTasks = focusClassInTasks;
 
 async function deleteClass(classId) {
-  const confirmed = confirm(
+  const confirmed = await showConfirm(
     "¿Seguro que quieres eliminar esta clase?\n\n" +
     "Se borrarán también sus tareas, exámenes, proyectos y los alumnos unidos. " +
     "Esta acción no se puede deshacer."
@@ -442,7 +582,7 @@ async function deleteClass(classId) {
     await loadTeacherDashboard();
 
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   }
 }
 window.deleteClass = deleteClass;
@@ -473,21 +613,21 @@ async function handleCreateClass(event) {
     const subject = document.getElementById("class-subject")?.value.trim();
 
     if (!course || !groupName || !subject) {
-      alert("Rellena todos los campos de la clase.");
+      showToast("Rellena todos los campos de la clase.", "error");
       return;
     }
 
     const categories = getCategoriesFromForm();
 
     if (categories.length === 0) {
-      alert("Añade al menos una categoría de evaluación.");
+      showToast("Añade al menos una categoría de evaluación.", "error");
       return;
     }
 
     const total = categories.reduce((sum, cat) => sum + cat.percentage, 0);
 
     if (Math.abs(total - 100) > 0.01) {
-      alert(`Los porcentajes deben sumar exactamente 100%. Ahora mismo suman ${total}%.`);
+      showToast(`Los porcentajes deben sumar exactamente 100%. Ahora mismo suman ${total}%.`, "error");
       return;
     }
 
@@ -501,7 +641,7 @@ async function handleCreateClass(event) {
       body: JSON.stringify({ categories })
     });
 
-    alert(`Clase creada correctamente.\n\nCódigo: ${result.code}`);
+    showToast(`Clase creada correctamente.\nCódigo: ${result.code}`, "success");
     event.target.reset();
     resetCategoryRows();
     document.getElementById("modal-create-class")?.close();
@@ -509,7 +649,7 @@ async function handleCreateClass(event) {
     await loadTeacherDashboard();
 
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   } finally {
     unlockButton(submitButton);
   }
@@ -551,12 +691,12 @@ async function handleCreateActivity(event) {
   const mandatory = document.getElementById("activity-mandatory")?.checked ?? true;
 
   if (!classSelect || !classSelect.value) {
-    alert("Selecciona una clase.");
+    showToast("Selecciona una clase.", "error");
     unlockButton(submitButton);
     return;
   }
   if (!title || !date) {
-    alert("Introduce un título y una fecha.");
+    showToast("Introduce un título y una fecha.", "error");
     unlockButton(submitButton);
     return;
   }
@@ -581,11 +721,11 @@ async function handleCreateActivity(event) {
         body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, due_date: date, priority })
       });
     } else {
-      alert("Selecciona el tipo de actividad.");
+      showToast("Selecciona el tipo de actividad.", "error");
       return;
     }
 
-    alert("Actividad creada correctamente.");
+    showToast("Actividad creada correctamente.", "success");
     event.target.reset();
     toggleMandatoryVisibility("task");
     document.getElementById("modal-create-activity")?.close();
@@ -593,7 +733,7 @@ async function handleCreateActivity(event) {
     await loadTeacherActivities();
 
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   } finally {
     unlockButton(submitButton);
   }
@@ -644,7 +784,7 @@ async function loadTeacherActivities() {
 }
 
 async function deleteActivity(type, id) {
-  const confirmed = confirm("¿Seguro que quieres eliminar esta actividad? Esta acción no se puede deshacer.");
+  const confirmed = await showConfirm("¿Seguro que quieres eliminar esta actividad? Esta acción no se puede deshacer.");
   if (!confirmed) return;
 
   const endpoints = {
@@ -657,7 +797,7 @@ async function deleteActivity(type, id) {
     await api(`${endpoints[type]}?teacher_id=${currentUser.id}`, { method: "DELETE" });
     await loadTeacherActivities();
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   }
 }
 window.deleteActivity = deleteActivity;
@@ -797,7 +937,7 @@ async function handleJoinClass(event) {
 
   const code = document.getElementById("join-code")?.value.trim().toUpperCase();
   if (!code) {
-    alert("Introduce el código de la clase.");
+    showToast("Introduce el código de la clase.", "error");
     unlockButton(submitButton);
     return;
   }
@@ -808,14 +948,14 @@ async function handleJoinClass(event) {
       body: JSON.stringify({ student_id: currentUser.id, code })
     });
 
-    alert("Te has unido a la clase correctamente.");
+    showToast("Te has unido a la clase correctamente.", "success");
     event.target.reset();
     document.getElementById("modal-join-class")?.close();
 
     await loadStudentDashboard();
 
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   } finally {
     unlockButton(submitButton);
   }
@@ -829,7 +969,7 @@ async function markTaskComplete(taskId) {
     });
     await loadStudentPlan();
   } catch (error) {
-    alert(error.message);
+    showToast(error.message, "error");
   }
 }
 window.markTaskComplete = markTaskComplete;
