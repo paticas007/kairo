@@ -10,6 +10,7 @@
 
 <header class="topbar" id="pre-login-topbar">
   <div class="logo">KAIRO</div>
+  <button class="admin-gear-btn" onclick="document.getElementById('modal-admin-login').showModal()" title="Modo editor">⚙️</button>
 </header>
 
 <main>
@@ -45,6 +46,7 @@
         <button type="submit" class="primary-btn">Iniciar sesión</button>
       </form>
       <button class="text-btn" onclick="showRegister()">Crear una cuenta</button>
+      <button class="text-btn" onclick="openPasswordRecovery()">¿Olvidaste tu contraseña?</button>
     </div>
 
     <div id="register-container" class="auth-card hidden">
@@ -56,6 +58,16 @@
         <input id="register-password" type="password" placeholder="Contraseña" required>
         <input id="register-course" type="text" placeholder="Curso">
         <input id="register-center" type="text" placeholder="Centro educativo" required>
+
+        <select id="register-security-question" required>
+          <option value="">Elige una pregunta de seguridad</option>
+          <option value="¿Cuál es el nombre de tu primera mascota?">¿Cuál es el nombre de tu primera mascota?</option>
+          <option value="¿Cuál es tu color favorito?">¿Cuál es tu color favorito?</option>
+          <option value="¿En qué ciudad naciste?">¿En qué ciudad naciste?</option>
+          <option value="¿Cuál es el segundo nombre de tu madre?">¿Cuál es el segundo nombre de tu madre?</option>
+        </select>
+        <input id="register-security-answer" type="text" placeholder="Tu respuesta" required>
+
         <button type="submit" class="primary-btn">Crear cuenta</button>
       </form>
       <button class="text-btn" onclick="showLogin()">Ya tengo una cuenta</button>
@@ -275,6 +287,49 @@
       <input id="join-code" type="text" placeholder="Código de clase" maxlength="5" required>
       <button type="submit" class="primary-btn">Unirme a la clase</button>
     </form>
+  </div>
+</dialog>
+
+<dialog id="modal-password-recovery">
+  <div class="modal-header">
+    <h2>Recuperar contraseña</h2>
+    <button class="modal-close" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <div class="modal-body">
+    <div id="recovery-step-email">
+      <p class="modal-note">Introduce el correo de tu cuenta.</p>
+      <input id="recovery-email" type="email" placeholder="Correo electrónico" required>
+      <button type="button" class="primary-btn" id="recovery-find-btn">Buscar cuenta</button>
+    </div>
+
+    <form id="recovery-reset-form" class="hidden">
+      <p id="recovery-question" class="modal-note" style="font-weight: 700; color: var(--text);"></p>
+      <input id="recovery-answer" type="text" placeholder="Tu respuesta" required>
+      <input id="recovery-new-password" type="password" placeholder="Nueva contraseña" required>
+      <button type="submit" class="primary-btn">Cambiar contraseña</button>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="modal-admin-login">
+  <div class="modal-header">
+    <h2>Modo editor</h2>
+    <button class="modal-close" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <div class="modal-body">
+
+    <div id="admin-login-step">
+      <p class="modal-note">Introduce tu clave de administrador.</p>
+      <input id="admin-secret-input" type="password" placeholder="Clave">
+      <button type="button" class="primary-btn" id="admin-login-btn">Entrar</button>
+    </div>
+
+    <div id="admin-panel-step" class="hidden">
+      <p class="modal-note" style="color: var(--success); font-weight: 700;">Modo editor activado.</p>
+      <p class="modal-note">Desde aquí puedes reiniciar completamente la base de datos. Esto borra todas las cuentas, clases, tareas, exámenes y proyectos, sin posibilidad de deshacerlo.</p>
+      <button type="button" class="primary-btn danger-btn" id="admin-reset-btn">🗑️ Reiniciar base de datos</button>
+    </div>
+
   </div>
 </dialog>
 
