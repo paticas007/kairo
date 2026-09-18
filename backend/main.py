@@ -11,6 +11,7 @@ import hashlib
 import secrets
 import pathlib
 import math
+import os
 
 from datetime import date, datetime
 
@@ -34,6 +35,13 @@ MAX_PLAN_WINDOW_HOURS = 24 * 30
 URGENCIA_MAXIMA = 1000.0
 VENTANA_CRITICA_HORAS = 48.0
 CONSTANTE_EXPONENCIAL = 8.0
+
+
+# ============================================================
+# CLAVE DE ADMINISTRACIÓN
+# ============================================================
+
+ADMIN_RESET_SECRET = os.environ.get("ADMIN_RESET_SECRET", "cambia-esto")
 
 
 # ============================================================
@@ -223,6 +231,54 @@ class PasswordRecoveryResetRequest(BaseModel):
     role: str
     answer: str
     new_password: str
+
+
+class AdminSecretRequest(BaseModel):
+    secret: str
+
+
+# ============================================================
+# MODO EDITOR   <-- NUEVO
+# ============================================================
+
+@app.post("/api/admin/login")
+def admin_login(data: AdminSecretRequest):
+    if data.secret != ADMIN_RESET_SECRET:
+        raise HTTPException(status_code=403, detail="Clave incorrecta.")
+    return {"ok": True}
+
+
+@app.post("/api/admin/reset-database")
+def reset_database(data: AdminSecretRequest):
+
+    if data.secret != ADMIN_RESET_SECRET:
+        raise HTTPException(status_code=403, detail="Clave incorrecta.")
+
+    connection = get_connection()
+
+    tables_in_order = [
+        "task_completions",
+        "tasks",
+        "exams",
+        "projects",
+        "evaluation_categories",
+        "class_students",
+        "sessions",
+        "classes",
+        "students",
+        "teachers",
+    ]
+
+    for table_name in tables_in_order:
+        try:
+            connection.execute(f"DELETE FROM {table_name}")
+        except Exception:
+            pass
+
+    connection.commit()
+    connection.close()
+
+    return {"message": "Base de datos reiniciada correctamente. Todas las cuentas y datos han sido borrados."}
 
 
 # ============================================================
