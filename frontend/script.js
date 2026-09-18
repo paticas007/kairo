@@ -9,6 +9,7 @@ let teacherClasses = [];
 let teacherActivitiesCache = [];
 let studentPlanCache = [];
 let categoryRowCounter = 0;
+let adminSecret = null;
 
 document.addEventListener("DOMContentLoaded", function () {
   initializeKairo();
@@ -52,6 +53,12 @@ function initializeKairo() {
   const recoveryResetForm = document.getElementById("recovery-reset-form");
   if (recoveryResetForm) recoveryResetForm.addEventListener("submit", handleResetPassword);
 
+  const adminLoginBtn = document.getElementById("admin-login-btn");
+  if (adminLoginBtn) adminLoginBtn.addEventListener("click", handleAdminLogin);
+
+  const adminResetBtn = document.getElementById("admin-reset-btn");
+  if (adminResetBtn) adminResetBtn.addEventListener("click", handleAdminResetDatabase);
+
   document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
     btn.addEventListener("click", () => {
       const shell = btn.closest(".shell");
@@ -75,7 +82,7 @@ function initializeKairo() {
 }
 
 // ============================================================
-// AVISOS FLOTANTES (sustituyen a alert())   <-- NUEVO
+// AVISOS FLOTANTES
 // ============================================================
 
 function showToast(message, type = "info") {
@@ -100,7 +107,7 @@ function showToast(message, type = "info") {
 }
 
 // ============================================================
-// CONFIRMACIÓN PROPIA (sustituye a confirm())   <-- NUEVO
+// CONFIRMACIÓN PROPIA
 // ============================================================
 
 function showConfirm(message) {
@@ -132,6 +139,61 @@ function showConfirm(message) {
       if (event.target === overlay) cleanup(false);
     });
   });
+}
+
+// ============================================================
+// MODO EDITOR   <-- NUEVO
+// ============================================================
+
+async function handleAdminLogin() {
+  const secretInput = document.getElementById("admin-secret-input");
+  const secret = secretInput?.value;
+
+  if (!secret) {
+    showToast("Escribe la clave de administrador.", "error");
+    return;
+  }
+
+  try {
+    await api("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ secret })
+    });
+
+    adminSecret = secret;
+
+    document.getElementById("admin-login-step")?.classList.add("hidden");
+    document.getElementById("admin-panel-step")?.classList.remove("hidden");
+    if (secretInput) secretInput.value = "";
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function handleAdminResetDatabase() {
+  if (!adminSecret) return;
+
+  const confirmed = await showConfirm(
+    "¿Seguro que quieres reiniciar la base de datos?\n\n" +
+    "Se borrarán TODAS las cuentas, clases, tareas, exámenes y proyectos, de todos los profesores y alumnos. " +
+    "Esta acción no se puede deshacer."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const result = await api("/api/admin/reset-database", {
+      method: "POST",
+      body: JSON.stringify({ secret: adminSecret })
+    });
+
+    showToast(result.message, "success");
+    document.getElementById("modal-admin-login")?.close();
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 // ============================================================
@@ -448,7 +510,7 @@ async function handleLogout() {
 }
 
 // ============================================================
-// RECUPERACIÓN DE CONTRASEÑA   <-- NUEVO
+// RECUPERACIÓN DE CONTRASEÑA
 // ============================================================
 
 function openPasswordRecovery() {
