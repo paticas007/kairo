@@ -65,6 +65,19 @@ button, input, select, textarea { font: inherit; }
   letter-spacing: 3px;
 }
 
+.admin-gear-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+  padding: 6px;
+}
+.admin-gear-btn:hover {
+  opacity: 1;
+}
+
 .section {
   width: min(1100px, 92%);
   margin: 0 auto;
@@ -394,10 +407,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   margin-bottom: 0;
 }
 
-/* ============================================================
-   AVISOS FLOTANTES (sustituyen a alert())   <-- NUEVO
-============================================================ */
-
 #toast-container {
   position: fixed;
   top: 20px;
@@ -432,10 +441,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 .toast-success { border-left: 4px solid var(--success); }
 .toast-error { border-left: 4px solid var(--danger); }
 .toast-info { border-left: 4px solid var(--accent); }
-
-/* ============================================================
-   CONFIRMACIÓN PROPIA (sustituye a confirm())   <-- NUEVO
-============================================================ */
 
 .confirm-overlay {
   position: fixed;
