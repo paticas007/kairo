@@ -278,6 +278,48 @@ def create_tables():
     """)
 
     # --------------------------------------------------------
+    # NOTAS   <-- NUEVO
+    # --------------------------------------------------------
+
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS grades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activity_type TEXT NOT NULL,
+            activity_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            grade REAL NOT NULL,
+            graded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(activity_type, activity_id, student_id),
+            FOREIGN KEY (student_id)
+                REFERENCES students(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    # --------------------------------------------------------
+    # ARCHIVOS ENTREGADOS   <-- NUEVO
+    # --------------------------------------------------------
+
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS task_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
+            file_type TEXT NOT NULL,
+            file_data TEXT NOT NULL,
+            submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(task_id, student_id),
+            FOREIGN KEY (task_id)
+                REFERENCES tasks(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (student_id)
+                REFERENCES students(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    # --------------------------------------------------------
     # PARCHES para bases de datos que ya existían de antes
     # --------------------------------------------------------
 
