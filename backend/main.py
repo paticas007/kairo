@@ -27,7 +27,7 @@ create_tables()
 
 
 # ============================================================
-# CONSTANTES DEL ALGORITMO DE PRIORIZACIÓN
+# CONSTANTES
 # ============================================================
 
 DEFAULT_CATEGORY_WEIGHT = 10.0
@@ -35,13 +35,8 @@ MAX_PLAN_WINDOW_HOURS = 24 * 30
 URGENCIA_MAXIMA = 1000.0
 VENTANA_CRITICA_HORAS = 48.0
 CONSTANTE_EXPONENCIAL = 8.0
-
-
-# ============================================================
-# CLAVE DE ADMINISTRACIÓN
-# ============================================================
-
 ADMIN_RESET_SECRET = os.environ.get("ADMIN_RESET_SECRET", "cambia-esto")
+MAX_FILE_BASE64_CHARS = 6_000_000  # ~4 MB de archivo real
 
 
 # ============================================================
@@ -237,8 +232,22 @@ class AdminSecretRequest(BaseModel):
     secret: str
 
 
+class TaskFileSubmission(BaseModel):
+    student_id: int
+    file_name: str
+    file_type: str
+    file_data: str
+
+
+class GradeSubmission(BaseModel):
+    activity_type: str
+    activity_id: int
+    student_id: int
+    grade: float
+
+
 # ============================================================
-# MODO EDITOR   <-- NUEVO
+# MODO EDITOR
 # ============================================================
 
 @app.post("/api/admin/login")
@@ -257,6 +266,8 @@ def reset_database(data: AdminSecretRequest):
     connection = get_connection()
 
     tables_in_order = [
+        "task_submissions",
+        "grades",
         "task_completions",
         "tasks",
         "exams",
@@ -785,6 +796,296 @@ def get_task_progress(class_id: int, task_id: int):
     ).fetchall()
     connection.close()
     return [dict(row) for row in students]
+
+
+# ============================================================
+# ENTREGA DE ARCHIVOS   <-- NUEVO
+# ============================================================
+
+@app.post("/api/tasks/{task_id}/submit")
+def submit_task_file(task_id: int, data: TaskFileSubmission):
+
+    if len(data.file_data) > MAX_FILE_BASE64_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo es demasiado grande. El máximo son unos 4 MB."
+        )
+
+    connection = get_connection()
+
+    task_exists = connection.execute(
+        "SELECT id FROM tasks WHERE id = ?", (task_id,)
+    ).fetchone()
+
+    if not task_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La tarea no existe.")
+
+    connection.execute(
+        """
+        INSERT INTO task_submissions (task_id, student_id, file_name, file_type, file_data)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(task_id, student_id) DO UPDATE SET
+            file_name = excluded.file_name,
+            file_type = excluded.file_type,
+            file_data = excluded.file_data,
+            submitted_at = CURRENT_TIMESTAMP
+        """,
+        (task_id, data.student_id, data.file_name, data.file_type, data.file_data)
+    )
+
+    connection.execute(
+        "INSERT OR IGNORE INTO task_completions (task_id, student_id) VALUES (?, ?)",
+        (task_id, data.student_id)
+    )
+
+    connection.commit()
+    connection.close()
+
+    return {"message": "Archivo entregado correctamente."}
+
+
+@app.get("/api/tasks/{task_id}/submissions/{student_id}/file")
+def get_submission_file(task_id: int, student_id: int):
+    connection = get_connection()
+
+    submission = connection.execute(
+        "SELECT * FROM task_submissions WHERE task_id = ? AND student_id = ?",
+        (task_id, student_id)
+    ).fetchone()
+
+    connection.close()
+
+    if not submission:
+        raise HTTPException(status_code=404, detail="No hay ningún archivo entregado.")
+
+    return {
+        "file_name": submission["file_name"],
+        "file_type": submission["file_type"],
+        "file_data": submission["file_data"]
+    }
+
+
+# ============================================================
+# NOTAS   <-- NUEVO
+# ============================================================
+
+@app.post("/api/grades")
+def set_grade(data: GradeSubmission):
+
+    if data.activity_type not in ["task", "exam", "project"]:
+        raise HTTPException(status_code=400, detail="Tipo de actividad no válido.")
+
+    if data.grade < 0 or data.grade > 10:
+        raise HTTPException(status_code=400, detail="La nota debe estar entre 0 y 10.")
+
+    connection = get_connection()
+
+    connection.execute(
+        """
+        INSERT INTO grades (activity_type, activity_id, student_id, grade)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(activity_type, activity_id, student_id) DO UPDATE SET
+            grade = excluded.grade,
+            graded_at = CURRENT_TIMESTAMP
+        """,
+        (data.activity_type, data.activity_id, data.student_id, data.grade)
+    )
+
+    connection.commit()
+    connection.close()
+
+    return {"message": "Nota guardada correctamente."}
+
+
+@app.get("/api/classes/{class_id}/gradebook")
+def get_gradebook(class_id: int):
+
+    connection = get_connection()
+
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (class_id,)
+    ).fetchone()
+
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    students = connection.execute(
+        """
+        SELECT s.id, s.name, s.surname
+        FROM class_students cs
+        INNER JOIN students s ON s.id = cs.student_id
+        WHERE cs.class_id = ?
+        ORDER BY s.surname, s.name
+        """,
+        (class_id,)
+    ).fetchall()
+
+    tasks = connection.execute(
+        "SELECT id, title, category_id FROM tasks WHERE class_id = ? ORDER BY due_date",
+        (class_id,)
+    ).fetchall()
+
+    exams = connection.execute(
+        "SELECT id, title, category_id FROM exams WHERE class_id = ? ORDER BY exam_date",
+        (class_id,)
+    ).fetchall()
+
+    projects = connection.execute(
+        "SELECT id, title, category_id FROM projects WHERE class_id = ? ORDER BY due_date",
+        (class_id,)
+    ).fetchall()
+
+    activities = []
+    activities.extend({"type": "task", **dict(t)} for t in tasks)
+    activities.extend({"type": "exam", **dict(e)} for e in exams)
+    activities.extend({"type": "project", **dict(p)} for p in projects)
+
+    grades_map = {}
+
+    for activity_type, id_list in [
+        ("task", [t["id"] for t in tasks]),
+        ("exam", [e["id"] for e in exams]),
+        ("project", [p["id"] for p in projects]),
+    ]:
+        if not id_list:
+            continue
+        placeholders = ",".join("?" * len(id_list))
+        rows = connection.execute(
+            f"SELECT activity_id, student_id, grade FROM grades "
+            f"WHERE activity_type = ? AND activity_id IN ({placeholders})",
+            (activity_type, *id_list)
+        ).fetchall()
+        for row in rows:
+            key = f"{activity_type}-{row['activity_id']}-{row['student_id']}"
+            grades_map[key] = row["grade"]
+
+    submissions_map = set()
+    if tasks:
+        task_ids = [t["id"] for t in tasks]
+        placeholders = ",".join("?" * len(task_ids))
+        rows = connection.execute(
+            f"SELECT task_id, student_id FROM task_submissions WHERE task_id IN ({placeholders})",
+            tuple(task_ids)
+        ).fetchall()
+        for row in rows:
+            submissions_map.add(f"{row['task_id']}-{row['student_id']}")
+
+    connection.close()
+
+    rows_out = []
+    for student in students:
+        grades = {}
+        for activity in activities:
+            column_key = f"{activity['type']}-{activity['id']}"
+            grade_key = f"{activity['type']}-{activity['id']}-{student['id']}"
+            has_file = (
+                activity["type"] == "task"
+                and f"{activity['id']}-{student['id']}" in submissions_map
+            )
+            grades[column_key] = {
+                "grade": grades_map.get(grade_key),
+                "has_file": has_file
+            }
+        rows_out.append({
+            "student_id": student["id"],
+            "name": student["name"],
+            "surname": student["surname"],
+            "grades": grades
+        })
+
+    return {"activities": activities, "students": rows_out}
+
+
+@app.get("/api/students/{student_id}/grades")
+def get_student_grades(student_id: int):
+
+    connection = get_connection()
+
+    classes = connection.execute(
+        """
+        SELECT c.id, c.course, c.group_name, c.subject
+        FROM classes c
+        INNER JOIN class_students cs ON c.id = cs.class_id
+        WHERE cs.student_id = ?
+        """,
+        (student_id,)
+    ).fetchall()
+
+    result = []
+
+    for class_item in classes:
+        class_id = class_item["id"]
+
+        categories = connection.execute(
+            "SELECT id, name, percentage FROM evaluation_categories WHERE class_id = ?",
+            (class_id,)
+        ).fetchall()
+
+        category_data = []
+
+        for category in categories:
+            category_id = category["id"]
+            activity_grades = []
+
+            for activity_type, table in [("task", "tasks"), ("exam", "exams"), ("project", "projects")]:
+                items = connection.execute(
+                    f"SELECT id, title FROM {table} WHERE class_id = ? AND category_id = ?",
+                    (class_id, category_id)
+                ).fetchall()
+
+                for item in items:
+                    grade_row = connection.execute(
+                        "SELECT grade FROM grades WHERE activity_type = ? AND activity_id = ? AND student_id = ?",
+                        (activity_type, item["id"], student_id)
+                    ).fetchone()
+
+                    activity_grades.append({
+                        "title": item["title"],
+                        "type": activity_type,
+                        "grade": grade_row["grade"] if grade_row else None
+                    })
+
+            graded_values = [a["grade"] for a in activity_grades if a["grade"] is not None]
+            category_average = sum(graded_values) / len(graded_values) if graded_values else None
+
+            category_data.append({
+                "name": category["name"],
+                "percentage": category["percentage"],
+                "activities": activity_grades,
+                "average": category_average
+            })
+
+        graded_categories = [c for c in category_data if c["average"] is not None]
+        weight_sum = sum(c["percentage"] for c in graded_categories)
+
+        if graded_categories and weight_sum > 0:
+            current_average = sum(c["average"] * c["percentage"] for c in graded_categories) / weight_sum
+        else:
+            current_average = None
+
+        if current_average is not None and category_data:
+            projected_average = sum(
+                (c["average"] if c["average"] is not None else current_average) * c["percentage"]
+                for c in category_data
+            ) / 100
+        else:
+            projected_average = None
+
+        result.append({
+            "class_id": class_id,
+            "course": class_item["course"],
+            "group_name": class_item["group_name"],
+            "subject": class_item["subject"],
+            "categories": category_data,
+            "current_average": current_average,
+            "projected_average": projected_average
+        })
+
+    connection.close()
+
+    return result
 
 
 # ============================================================
