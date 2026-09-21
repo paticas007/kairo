@@ -479,6 +479,74 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   gap: 10px;
 }
 
+/* ============================================================
+   TABLA DE NOTAS (gradebook)   <-- NUEVO
+============================================================ */
+
+.gradebook-scroll {
+  overflow-x: auto;
+}
+
+.gradebook-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 600px;
+}
+
+.gradebook-table th,
+.gradebook-table td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.gradebook-table th {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.gradebook-table th:first-child,
+.gradebook-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.gradebook-input {
+  width: 60px;
+  padding: 6px;
+  text-align: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: white;
+}
+
+.gradebook-file-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  margin-left: 4px;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+/* ============================================================
+   NOTAS DEL ALUMNO   <-- NUEVO
+============================================================ */
+
+.grade-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -537,6 +605,10 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grade-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   #toast-container {
