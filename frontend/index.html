@@ -84,6 +84,7 @@
       <button class="nav-item" data-view="classes">📚 &nbsp;Mis clases</button>
       <button class="nav-item" data-view="tasks">📝 &nbsp;Actividades</button>
       <button class="nav-item" data-view="progress">✅ &nbsp;Seguimiento</button>
+      <button class="nav-item" data-view="grades">📊 &nbsp;Notas</button>
 
       <div class="nav-spacer"></div>
       <button class="nav-item logout-item" id="teacher-logout-btn">🚪 &nbsp;Cerrar sesión</button>
@@ -143,6 +144,18 @@
         </div>
       </div>
 
+      <div class="view hidden" id="teacher-view-grades">
+        <div class="view-header">
+          <div><h1>Notas</h1><p>Pon nota a cada actividad. Los archivos entregados por los alumnos aparecen con 📎.</p></div>
+        </div>
+        <div class="panel">
+          <select id="gradebook-class">
+            <option value="">Selecciona una clase</option>
+          </select>
+          <div id="gradebook-table-container" style="margin-top: 16px;"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -155,6 +168,7 @@
       <button class="nav-item active" data-view="dashboard">🏠 &nbsp;Inicio</button>
       <button class="nav-item" data-view="classes">📚 &nbsp;Mis clases</button>
       <button class="nav-item" data-view="plan">🗓️ &nbsp;Plan diario</button>
+      <button class="nav-item" data-view="grades">🎯 &nbsp;Notas</button>
 
       <div class="nav-spacer"></div>
       <button class="nav-item logout-item" id="student-logout-btn">🚪 &nbsp;Cerrar sesión</button>
@@ -198,6 +212,13 @@
         <div class="panel">
           <div id="student-plan"></div>
         </div>
+      </div>
+
+      <div class="view hidden" id="student-view-grades">
+        <div class="view-header">
+          <div><h1>Notas</h1><p>Tus calificaciones y una proyección de tu nota media si sigues así.</p></div>
+        </div>
+        <div id="student-grades"></div>
       </div>
 
     </div>
