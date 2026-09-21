@@ -11,6 +11,8 @@ let studentPlanCache = [];
 let categoryRowCounter = 0;
 let adminSecret = null;
 
+const MAX_FILE_BYTES = 4.3 * 1024 * 1024;
+
 document.addEventListener("DOMContentLoaded", function () {
   initializeKairo();
 });
@@ -41,6 +43,9 @@ function initializeKairo() {
   const progressSelect = document.getElementById("progress-class");
   if (progressSelect) progressSelect.addEventListener("change", handleProgressClassChange);
 
+  const gradebookSelect = document.getElementById("gradebook-class");
+  if (gradebookSelect) gradebookSelect.addEventListener("change", handleGradebookClassChange);
+
   const addCategoryBtn = document.getElementById("add-category-btn");
   if (addCategoryBtn) addCategoryBtn.addEventListener("click", () => addCategoryRow());
 
@@ -64,6 +69,10 @@ function initializeKairo() {
       const shell = btn.closest(".shell");
       const role = shell && shell.id === "teacher-shell" ? "teacher" : "student";
       setActiveView(role, btn.dataset.view);
+
+      if (role === "student" && btn.dataset.view === "grades") {
+        loadStudentGrades();
+      }
     });
   });
 
@@ -142,7 +151,7 @@ function showConfirm(message) {
 }
 
 // ============================================================
-// MODO EDITOR   <-- NUEVO
+// MODO EDITOR
 // ============================================================
 
 async function handleAdminLogin() {
@@ -652,8 +661,9 @@ window.deleteClass = deleteClass;
 function updateClassSelectors() {
   const activitySelect = document.getElementById("activity-class");
   const progressSelect = document.getElementById("progress-class");
+  const gradebookSelect = document.getElementById("gradebook-class");
 
-  [activitySelect, progressSelect].forEach(select => {
+  [activitySelect, progressSelect, gradebookSelect].forEach(select => {
     if (!select) return;
     select.innerHTML = `<option value="">Selecciona una clase</option>`;
     teacherClasses.forEach(classItem => {
@@ -940,6 +950,145 @@ async function loadTaskProgress(classId, taskId) {
 window.loadTaskProgress = loadTaskProgress;
 
 // ============================================================
+// TABLA DE NOTAS DEL PROFESOR (gradebook)   <-- NUEVO
+// ============================================================
+
+async function handleGradebookClassChange(event) {
+  const classId = event.target.value;
+  const container = document.getElementById("gradebook-table-container");
+  if (!container) return;
+
+  container.innerHTML = "";
+  if (!classId) return;
+
+  container.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const data = await api(`/api/classes/${classId}/gradebook`);
+    renderGradebook(container, classId, data);
+  } catch (error) {
+    container.innerHTML = "<p>No se pudo cargar la tabla de notas.</p>";
+  }
+}
+
+function renderGradebook(container, classId, data) {
+  if (data.activities.length === 0) {
+    container.innerHTML = "<p>Esta clase todavía no tiene actividades.</p>";
+    return;
+  }
+
+  if (data.students.length === 0) {
+    container.innerHTML = "<p>Esta clase todavía no tiene alumnos.</p>";
+    return;
+  }
+
+  let html = `<div class="gradebook-scroll"><table class="gradebook-table"><thead><tr><th>Alumno</th>`;
+
+  data.activities.forEach(activity => {
+    const icon = activity.type === "task" ? "📝" : activity.type === "exam" ? "📚" : "🗂️";
+    html += `<th>${icon} ${activity.title}</th>`;
+  });
+
+  html += `</tr></thead><tbody>`;
+
+  data.students.forEach(student => {
+    html += `<tr><td>${student.surname}, ${student.name}</td>`;
+
+    data.activities.forEach(activity => {
+      const key = `${activity.type}-${activity.id}`;
+      const cell = student.grades[key] || {};
+      const gradeValue = (cell.grade !== null && cell.grade !== undefined) ? cell.grade : "";
+      const fileButton = cell.has_file
+        ? `<button type="button" class="gradebook-file-btn" onclick="viewSubmission(${activity.id}, ${student.student_id})" title="Ver archivo entregado">📎</button>`
+        : "";
+
+      html += `
+        <td>
+          <input
+            type="number" min="0" max="10" step="0.1"
+            class="gradebook-input"
+            value="${gradeValue}"
+            data-type="${activity.type}"
+            data-activity="${activity.id}"
+            data-student="${student.student_id}"
+            onchange="handleGradeChange(this)"
+          >${fileButton}
+        </td>
+      `;
+    });
+
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+
+  container.innerHTML = html;
+}
+
+async function handleGradeChange(input) {
+  if (input.value === "") return;
+
+  const grade = Number(input.value);
+
+  if (isNaN(grade) || grade < 0 || grade > 10) {
+    showToast("La nota debe estar entre 0 y 10.", "error");
+    return;
+  }
+
+  try {
+    await api("/api/grades", {
+      method: "POST",
+      body: JSON.stringify({
+        activity_type: input.dataset.type,
+        activity_id: Number(input.dataset.activity),
+        student_id: Number(input.dataset.student),
+        grade
+      })
+    });
+
+    showToast("Nota guardada.", "success");
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.handleGradeChange = handleGradeChange;
+
+async function viewSubmission(taskId, studentId) {
+  try {
+    const file = await api(`/api/tasks/${taskId}/submissions/${studentId}/file`);
+    const dataUrl = `data:${file.file_type};base64,${file.file_data}`;
+
+    const newWindow = window.open();
+    if (!newWindow) {
+      showToast("Tu navegador ha bloqueado la ventana. Permite ventanas emergentes para KAIRO.", "error");
+      return;
+    }
+
+    if (file.file_type.startsWith("image/")) {
+      newWindow.document.write(`
+        <title>${file.file_name}</title>
+        <body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh;">
+          <img src="${dataUrl}" style="max-width:100%;max-height:100%;">
+        </body>
+      `);
+    } else {
+      newWindow.document.write(`
+        <title>${file.file_name}</title>
+        <body style="font-family:sans-serif;padding:40px;">
+          <p>Archivo entregado: <strong>${file.file_name}</strong></p>
+          <a href="${dataUrl}" download="${file.file_name}">⬇️ Descargar archivo</a>
+        </body>
+      `);
+    }
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.viewSubmission = viewSubmission;
+
+// ============================================================
 // DASHBOARD ALUMNO
 // ============================================================
 
@@ -1036,6 +1185,58 @@ async function markTaskComplete(taskId) {
 }
 window.markTaskComplete = markTaskComplete;
 
+// ============================================================
+// ENTREGA DE ARCHIVOS (alumno)   <-- NUEVO
+// ============================================================
+
+function triggerFileSubmit(taskId) {
+  const input = document.getElementById(`submit-file-input-${taskId}`);
+  if (input) input.click();
+}
+window.triggerFileSubmit = triggerFileSubmit;
+
+async function handleFileSubmit(taskId, input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  if (file.size > MAX_FILE_BYTES) {
+    showToast("El archivo es demasiado grande. El máximo son unos 4 MB.", "error");
+    input.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    const base64 = reader.result.split(",")[1];
+
+    try {
+      await api(`/api/tasks/${taskId}/submit`, {
+        method: "POST",
+        body: JSON.stringify({
+          student_id: currentUser.id,
+          file_name: file.name,
+          file_type: file.type || "application/octet-stream",
+          file_data: base64
+        })
+      });
+
+      showToast("Archivo entregado correctamente.", "success");
+      await loadStudentPlan();
+
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  };
+
+  reader.onerror = () => {
+    showToast("No se pudo leer el archivo.", "error");
+  };
+
+  reader.readAsDataURL(file);
+}
+window.handleFileSubmit = handleFileSubmit;
+
 async function loadStudentPlan() {
   const container = document.getElementById("student-plan");
   const previewContainer = document.getElementById("student-plan-preview");
@@ -1078,10 +1279,16 @@ async function loadStudentPlan() {
           ? `<button type="button" class="secondary-btn" onclick="markTaskComplete(${item.id})">✅ Marcar como hecha</button>`
           : "";
 
+        const submitButtonHtml = item.type === "task"
+          ? `<button type="button" class="secondary-btn" onclick="triggerFileSubmit(${item.id})">📎 Entregar archivo</button>
+             <input type="file" id="submit-file-input-${item.id}" class="hidden" onchange="handleFileSubmit(${item.id}, this)">`
+          : "";
+
         element.innerHTML = `
           <div class="plan-title">${label} · ${typeLabel}<br>${item.title}</div>
           <div class="plan-meta">${item.subject} · ${formatDays(item.days_left)} · Importancia: ${item.priority}</div>
           ${doneButton}
+          ${submitButtonHtml}
         `;
         target.appendChild(element);
       });
@@ -1117,4 +1324,96 @@ function formatDays(days) {
   if (days === 0) return "HOY";
   if (days === 1) return "MAÑANA";
   return `En ${days} días`;
+}
+
+// ============================================================
+// NOTAS DEL ALUMNO   <-- NUEVO
+// ============================================================
+
+async function loadStudentGrades() {
+  const container = document.getElementById("student-grades");
+  if (!container) return;
+
+  container.innerHTML = "<p>Cargando notas...</p>";
+
+  try {
+    const classesGrades = await api(`/api/students/${currentUser.id}/grades`);
+
+    if (classesGrades.length === 0) {
+      container.innerHTML = "<p>Aún no perteneces a ninguna clase.</p>";
+      return;
+    }
+
+    container.innerHTML = "";
+
+    classesGrades.forEach(classData => {
+      const card = document.createElement("div");
+      card.className = "panel";
+
+      const currentText = classData.current_average !== null
+        ? classData.current_average.toFixed(2)
+        : "—";
+      const projectedText = classData.projected_average !== null
+        ? classData.projected_average.toFixed(2)
+        : "—";
+
+      let categoriesHtml = "";
+
+      classData.categories.forEach(category => {
+        const avgText = category.average !== null
+          ? category.average.toFixed(2)
+          : "Sin notas todavía";
+
+        let activitiesHtml = "";
+
+        category.activities.forEach(activity => {
+          const gradeText = activity.grade !== null ? activity.grade : "—";
+          let typeLabel = "Tarea";
+          if (activity.type === "exam") typeLabel = "Examen";
+          else if (activity.type === "project") typeLabel = "Proyecto";
+
+          activitiesHtml += `
+            <div class="progress-row">
+              ${typeLabel} · ${activity.title}: <strong>&nbsp;${gradeText}</strong>
+            </div>
+          `;
+        });
+
+        if (activitiesHtml === "") {
+          activitiesHtml = `<div class="progress-row">Todavía no hay actividades en esta categoría.</div>`;
+        }
+
+        categoriesHtml += `
+          <div class="plan-item">
+            <div class="plan-title">${category.name} (${category.percentage}%)</div>
+            <div class="plan-meta">Media de esta categoría: ${avgText}</div>
+            ${activitiesHtml}
+          </div>
+        `;
+      });
+
+      card.innerHTML = `
+        <h2>${classData.course} ${classData.group_name} — ${classData.subject}</h2>
+
+        <div class="grade-summary-grid">
+          <div class="metric-card">
+            <div class="metric-value">${currentText}</div>
+            <div class="metric-label">Nota media actual</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value">${projectedText}</div>
+            <div class="metric-label">Proyección si sigues así</div>
+          </div>
+        </div>
+
+        ${categoriesHtml}
+      `;
+
+      container.appendChild(card);
+    });
+
+  } catch (error) {
+    console.error("Error cargando notas:", error);
+    container.innerHTML = "<p>No se pudieron cargar las notas.</p>";
+  }
 }
