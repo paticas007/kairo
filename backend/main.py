@@ -36,7 +36,7 @@ URGENCIA_MAXIMA = 1000.0
 VENTANA_CRITICA_HORAS = 48.0
 CONSTANTE_EXPONENCIAL = 8.0
 ADMIN_RESET_SECRET = os.environ.get("ADMIN_RESET_SECRET", "cambia-esto")
-MAX_FILE_BASE64_CHARS = 6_000_000  # ~4 MB de archivo real
+MAX_FILE_BASE64_CHARS = 6_000_000
 
 
 # ============================================================
@@ -623,6 +623,122 @@ def get_evaluation_categories(class_id: int):
 
 
 # ============================================================
+# COMPAÑEROS Y PROFESOR DE UNA CLASE   <-- NUEVO
+# ============================================================
+
+@app.get("/api/classes/{class_id}/roster")
+def get_class_roster(class_id: int):
+    connection = get_connection()
+
+    class_item = connection.execute(
+        """
+        SELECT classes.id, classes.course, classes.group_name, classes.subject, classes.code,
+               teachers.name AS teacher_name, teachers.surname AS teacher_surname
+        FROM classes
+        INNER JOIN teachers ON classes.teacher_id = teachers.id
+        WHERE classes.id = ?
+        """,
+        (class_id,)
+    ).fetchone()
+
+    if not class_item:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    students = connection.execute(
+        """
+        SELECT s.id, s.name, s.surname
+        FROM class_students cs
+        INNER JOIN students s ON s.id = cs.student_id
+        WHERE cs.class_id = ?
+        ORDER BY s.surname, s.name
+        """,
+        (class_id,)
+    ).fetchall()
+
+    connection.close()
+
+    return {
+        "class": {
+            "id": class_item["id"],
+            "course": class_item["course"],
+            "group_name": class_item["group_name"],
+            "subject": class_item["subject"],
+            "code": class_item["code"]
+        },
+        "teacher": {
+            "name": class_item["teacher_name"],
+            "surname": class_item["teacher_surname"]
+        },
+        "students": [dict(s) for s in students]
+    }
+
+
+# ============================================================
+# VISTA DE UNA CLASE PARA UN ALUMNO   <-- NUEVO
+# ============================================================
+
+@app.get("/api/classes/{class_id}/student-view")
+def get_class_student_view(class_id: int, student_id: int):
+    connection = get_connection()
+
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (class_id,)
+    ).fetchone()
+
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    tasks = connection.execute(
+        """
+        SELECT tasks.*, evaluation_categories.name AS category_name,
+               CASE WHEN task_completions.student_id IS NOT NULL THEN 1 ELSE 0 END AS completed,
+               CASE WHEN task_submissions.student_id IS NOT NULL THEN 1 ELSE 0 END AS has_submission
+        FROM tasks
+        LEFT JOIN evaluation_categories ON tasks.category_id = evaluation_categories.id
+        LEFT JOIN task_completions
+            ON task_completions.task_id = tasks.id AND task_completions.student_id = ?
+        LEFT JOIN task_submissions
+            ON task_submissions.task_id = tasks.id AND task_submissions.student_id = ?
+        WHERE tasks.class_id = ?
+        ORDER BY tasks.due_date
+        """,
+        (student_id, student_id, class_id)
+    ).fetchall()
+
+    exams = connection.execute(
+        """
+        SELECT exams.*, evaluation_categories.name AS category_name
+        FROM exams
+        LEFT JOIN evaluation_categories ON exams.category_id = evaluation_categories.id
+        WHERE exams.class_id = ?
+        ORDER BY exams.exam_date
+        """,
+        (class_id,)
+    ).fetchall()
+
+    projects = connection.execute(
+        """
+        SELECT projects.*, evaluation_categories.name AS category_name
+        FROM projects
+        LEFT JOIN evaluation_categories ON projects.category_id = evaluation_categories.id
+        WHERE projects.class_id = ?
+        ORDER BY projects.due_date
+        """,
+        (class_id,)
+    ).fetchall()
+
+    connection.close()
+
+    return {
+        "tasks": [dict(t) for t in tasks],
+        "exams": [dict(e) for e in exams],
+        "projects": [dict(p) for p in projects]
+    }
+
+
+# ============================================================
 # UNIR ALUMNO A CLASE
 # ============================================================
 
@@ -799,7 +915,7 @@ def get_task_progress(class_id: int, task_id: int):
 
 
 # ============================================================
-# ENTREGA DE ARCHIVOS   <-- NUEVO
+# ENTREGA DE ARCHIVOS
 # ============================================================
 
 @app.post("/api/tasks/{task_id}/submit")
@@ -867,7 +983,7 @@ def get_submission_file(task_id: int, student_id: int):
 
 
 # ============================================================
-# NOTAS   <-- NUEVO
+# NOTAS
 # ============================================================
 
 @app.post("/api/grades")
