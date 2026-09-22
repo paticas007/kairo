@@ -8,8 +8,10 @@ let currentToken = localStorage.getItem("kairo_token");
 let teacherClasses = [];
 let teacherActivitiesCache = [];
 let studentPlanCache = [];
+let studentClassesCache = [];
 let categoryRowCounter = 0;
 let adminSecret = null;
+let currentClassDetailId = null;
 
 const MAX_FILE_BYTES = 4.3 * 1024 * 1024;
 
@@ -222,6 +224,7 @@ function setActiveView(role, viewName) {
     view.classList.toggle("hidden", view.id !== `${role}-view-${viewName}`);
   });
 }
+window.setActiveView = setActiveView;
 
 // ============================================================
 // SELECTORES DE TIPO / PRIORIDAD
@@ -950,7 +953,7 @@ async function loadTaskProgress(classId, taskId) {
 window.loadTaskProgress = loadTaskProgress;
 
 // ============================================================
-// TABLA DE NOTAS DEL PROFESOR (gradebook)   <-- NUEVO
+// TABLA DE NOTAS DEL PROFESOR (gradebook)
 // ============================================================
 
 async function handleGradebookClassChange(event) {
@@ -1118,28 +1121,38 @@ function startAutoRefresh() {
 
 async function loadStudentClasses() {
   const classes = await api(`/api/students/${currentUser.id}/classes`);
+  studentClassesCache = classes;
+
   const container = document.getElementById("student-classes");
+  const homeContainer = document.getElementById("student-classes-home");
 
   const metricClasses = document.getElementById("metric-student-classes");
   if (metricClasses) metricClasses.textContent = classes.length;
 
-  if (!container) return;
-  container.innerHTML = "";
+  const renderCards = (target) => {
+    if (!target) return;
+    target.innerHTML = "";
 
-  if (classes.length === 0) {
-    container.innerHTML = "<p>Aún no perteneces a ninguna clase.</p>";
-    return;
-  }
+    if (classes.length === 0) {
+      target.innerHTML = "<p>Aún no perteneces a ninguna clase.</p>";
+      return;
+    }
 
-  classes.forEach(classItem => {
-    const card = document.createElement("div");
-    card.className = "class-card";
-    card.innerHTML = `
-      <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
-      <p>Profesor: ${classItem.teacher_name} ${classItem.teacher_surname}</p>
-    `;
-    container.appendChild(card);
-  });
+    classes.forEach(classItem => {
+      const card = document.createElement("div");
+      card.className = "class-card";
+      card.style.cursor = "pointer";
+      card.addEventListener("click", () => openClassDetail(classItem.id));
+      card.innerHTML = `
+        <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
+        <p>Profesor: ${classItem.teacher_name} ${classItem.teacher_surname}</p>
+      `;
+      target.appendChild(card);
+    });
+  };
+
+  renderCards(container);
+  renderCards(homeContainer);
 }
 
 async function handleJoinClass(event) {
@@ -1172,6 +1185,109 @@ async function handleJoinClass(event) {
   }
 }
 
+// ============================================================
+// VISTA DE DETALLE DE UNA CLASE (alumno)   <-- NUEVO
+// ============================================================
+
+async function openClassDetail(classId) {
+  currentClassDetailId = classId;
+  setActiveView("student", "class-detail");
+
+  const titleEl = document.getElementById("class-detail-title");
+  const teacherEl = document.getElementById("class-detail-teacher");
+  const rosterEl = document.getElementById("class-detail-roster");
+  const activitiesEl = document.getElementById("class-detail-activities");
+
+  if (titleEl) titleEl.textContent = "Cargando...";
+  if (teacherEl) teacherEl.textContent = "";
+  if (rosterEl) rosterEl.innerHTML = "";
+  if (activitiesEl) activitiesEl.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const roster = await api(`/api/classes/${classId}/roster`);
+    const view = await api(`/api/classes/${classId}/student-view?student_id=${currentUser.id}`);
+
+    if (titleEl) titleEl.textContent = `${roster.class.course} ${roster.class.group_name} — ${roster.class.subject}`;
+    if (teacherEl) teacherEl.textContent = `Profesor: ${roster.teacher.name} ${roster.teacher.surname}`;
+
+    if (rosterEl) {
+      const others = roster.students.filter(s => s.id !== currentUser.id);
+      if (others.length === 0) {
+        rosterEl.innerHTML = "<p>Todavía no hay más alumnos en esta clase.</p>";
+      } else {
+        rosterEl.innerHTML = others.map(s => `<div class="progress-row">👤 ${s.name} ${s.surname}</div>`).join("");
+      }
+    }
+
+    renderClassDetailActivities(activitiesEl, view);
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.openClassDetail = openClassDetail;
+
+function renderClassDetailActivities(container, view) {
+  if (!container) return;
+
+  const items = [];
+
+  view.tasks.forEach(task => items.push({ ...task, type: "task" }));
+  view.exams.forEach(exam => items.push({ ...exam, type: "exam", due_date: exam.exam_date }));
+  view.projects.forEach(project => items.push({ ...project, type: "project" }));
+
+  items.sort((a, b) => (a.due_date > b.due_date ? 1 : -1));
+
+  if (items.length === 0) {
+    container.innerHTML = "<p>Esta clase todavía no tiene actividades.</p>";
+    return;
+  }
+
+  container.innerHTML = "";
+
+  items.forEach(item => {
+    const element = document.createElement("div");
+    element.className = "plan-item";
+
+    let typeLabel = "TAREA";
+    if (item.type === "exam") typeLabel = "EXAMEN";
+    else if (item.type === "project") typeLabel = "PROYECTO";
+
+    const categoryLabel = item.category_name ? `${item.category_name} · ` : "";
+
+    let actionsHtml = "";
+    if (item.type === "task") {
+      const doneLabel = item.completed ? "✅ Hecha" : "✅ Marcar como hecha";
+      actionsHtml = `
+        <button type="button" class="secondary-btn" ${item.completed ? "disabled" : ""} onclick="markTaskCompleteInDetail(${item.id})">${doneLabel}</button>
+        <button type="button" class="secondary-btn" onclick="triggerFileSubmit(${item.id})">${item.has_submission ? "📎 Archivo entregado (cambiar)" : "📎 Entregar archivo"}</button>
+        <input type="file" id="submit-file-input-${item.id}" class="hidden" onchange="handleFileSubmit(${item.id}, this)">
+      `;
+    }
+
+    element.innerHTML = `
+      <div class="plan-title">${typeLabel} · ${item.title}</div>
+      <div class="plan-meta">${categoryLabel}Fecha: ${item.due_date}</div>
+      ${actionsHtml}
+    `;
+    container.appendChild(element);
+  });
+}
+
+async function markTaskCompleteInDetail(taskId) {
+  try {
+    await api(`/api/tasks/${taskId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ student_id: currentUser.id })
+    });
+    showToast("Tarea marcada como hecha.", "success");
+    if (currentClassDetailId) await openClassDetail(currentClassDetailId);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.markTaskCompleteInDetail = markTaskCompleteInDetail;
+
 async function markTaskComplete(taskId) {
   try {
     await api(`/api/tasks/${taskId}/complete`, {
@@ -1186,7 +1302,7 @@ async function markTaskComplete(taskId) {
 window.markTaskComplete = markTaskComplete;
 
 // ============================================================
-// ENTREGA DE ARCHIVOS (alumno)   <-- NUEVO
+// ENTREGA DE ARCHIVOS (alumno)
 // ============================================================
 
 function triggerFileSubmit(taskId) {
@@ -1222,7 +1338,12 @@ async function handleFileSubmit(taskId, input) {
       });
 
       showToast("Archivo entregado correctamente.", "success");
-      await loadStudentPlan();
+
+      if (currentClassDetailId) {
+        await openClassDetail(currentClassDetailId);
+      } else {
+        await loadStudentPlan();
+      }
 
     } catch (error) {
       showToast(error.message, "error");
@@ -1239,7 +1360,6 @@ window.handleFileSubmit = handleFileSubmit;
 
 async function loadStudentPlan() {
   const container = document.getElementById("student-plan");
-  const previewContainer = document.getElementById("student-plan-preview");
 
   if (container) container.innerHTML = "<p>KAIRO está pensando...</p>";
 
@@ -1295,18 +1415,17 @@ async function loadStudentPlan() {
     };
 
     renderList(container, studentPlanCache);
-    renderList(previewContainer, studentPlanCache.slice(0, 4));
 
   } catch (error) {
     console.error("Error generando el plan:", error);
-    const errorHtml = `
-      <div class="plan-item">
-        <div class="plan-title">No se ha podido generar el plan de KAIRO.</div>
-        <div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>
-      </div>
-    `;
-    if (container) container.innerHTML = errorHtml;
-    if (previewContainer) previewContainer.innerHTML = errorHtml;
+    if (container) {
+      container.innerHTML = `
+        <div class="plan-item">
+          <div class="plan-title">No se ha podido generar el plan de KAIRO.</div>
+          <div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>
+        </div>
+      `;
+    }
   }
 }
 
@@ -1327,7 +1446,7 @@ function formatDays(days) {
 }
 
 // ============================================================
-// NOTAS DEL ALUMNO   <-- NUEVO
+// NOTAS DEL ALUMNO
 // ============================================================
 
 async function loadStudentGrades() {
