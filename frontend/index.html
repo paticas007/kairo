@@ -192,8 +192,8 @@
         </div>
 
         <div class="panel">
-          <h2>Lo más urgente</h2>
-          <div id="student-plan-preview"></div>
+          <h2>Mis clases</h2>
+          <div id="student-classes-home" class="cards"></div>
         </div>
       </div>
 
@@ -203,6 +203,26 @@
           <button class="primary-btn" onclick="document.getElementById('modal-join-class').showModal()">+ Unirme a una clase</button>
         </div>
         <div id="student-classes" class="cards"></div>
+      </div>
+
+      <div class="view hidden" id="student-view-class-detail">
+        <div class="view-header">
+          <div>
+            <button class="back-btn" onclick="setActiveView('student','dashboard')">← Volver</button>
+            <h1 id="class-detail-title">Clase</h1>
+            <p id="class-detail-teacher"></p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Compañeros de clase</h2>
+          <div id="class-detail-roster"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Tablón de la clase</h2>
+          <div id="class-detail-activities"></div>
+        </div>
       </div>
 
       <div class="view hidden" id="student-view-plan">
