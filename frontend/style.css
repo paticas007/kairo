@@ -641,3 +641,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
     width: 100%;
   }
 }
+/* ============================================================
+   RETRASADO (más urgente que "alta")   <-- NUEVO
+============================================================ */
+
+.plan-item.priority-retrasado {
+  border-left-color: var(--danger);
+  background: rgba(239, 68, 68, 0.06);
+}
