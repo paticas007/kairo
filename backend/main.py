@@ -107,7 +107,13 @@ def calculate_priority_score(category_weight: float, hours_left: float) -> float
 
 
 def priority_label(hours_left: float) -> str:
-    if hours_left < VENTANA_CRITICA_HORAS:
+    """
+    'retrasado' es el nivel más urgente de todos — por encima
+    de 'alta' — porque ya ha pasado la fecha límite.
+    """
+    if hours_left <= 0:
+        return "retrasado"
+    elif hours_left < VENTANA_CRITICA_HORAS:
         return "alta"
     elif hours_left < 24 * 7:
         return "media"
@@ -130,6 +136,22 @@ def prioritize_activities(activities: list[dict]) -> list[dict]:
     result.sort(key=lambda item: item["priority_score"], reverse=True)
 
     return result
+
+
+def compute_weighted_average(category_data: list[dict]):
+    """
+    Recibe una lista de categorías, cada una con su 'average'
+    (o None si aún no tiene notas) y su 'percentage'.
+    Devuelve la media ponderada solo con las categorías que
+    ya tienen alguna nota. Si no hay ninguna nota, devuelve None.
+    """
+    graded_categories = [c for c in category_data if c["average"] is not None]
+    weight_sum = sum(c["percentage"] for c in graded_categories)
+
+    if graded_categories and weight_sum > 0:
+        return sum(c["average"] * c["percentage"] for c in graded_categories) / weight_sum
+
+    return None
 
 
 # ============================================================
@@ -623,7 +645,7 @@ def get_evaluation_categories(class_id: int):
 
 
 # ============================================================
-# COMPAÑEROS Y PROFESOR DE UNA CLASE   <-- NUEVO
+# COMPAÑEROS Y PROFESOR DE UNA CLASE
 # ============================================================
 
 @app.get("/api/classes/{class_id}/roster")
@@ -675,7 +697,7 @@ def get_class_roster(class_id: int):
 
 
 # ============================================================
-# VISTA DE UNA CLASE PARA UN ALUMNO   <-- NUEVO
+# VISTA DE UNA CLASE PARA UN ALUMNO
 # ============================================================
 
 @app.get("/api/classes/{class_id}/student-view")
@@ -1027,6 +1049,11 @@ def get_gradebook(class_id: int):
         connection.close()
         raise HTTPException(status_code=404, detail="La clase no existe.")
 
+    categories = connection.execute(
+        "SELECT id, name, percentage FROM evaluation_categories WHERE class_id = ?",
+        (class_id,)
+    ).fetchall()
+
     students = connection.execute(
         """
         SELECT s.id, s.name, s.surname
@@ -1093,22 +1120,44 @@ def get_gradebook(class_id: int):
     rows_out = []
     for student in students:
         grades = {}
+        category_grades = {c["id"]: [] for c in categories}
+
         for activity in activities:
             column_key = f"{activity['type']}-{activity['id']}"
             grade_key = f"{activity['type']}-{activity['id']}-{student['id']}"
+            grade_value = grades_map.get(grade_key)
             has_file = (
                 activity["type"] == "task"
                 and f"{activity['id']}-{student['id']}" in submissions_map
             )
+
             grades[column_key] = {
-                "grade": grades_map.get(grade_key),
+                "grade": grade_value,
                 "has_file": has_file
             }
+
+            category_id = activity.get("category_id")
+            if grade_value is not None and category_id in category_grades:
+                category_grades[category_id].append(grade_value)
+
+        # Media ponderada del alumno en esta clase   <-- NUEVO
+        category_data = []
+        for category in categories:
+            values = category_grades[category["id"]]
+            average = sum(values) / len(values) if values else None
+            category_data.append({
+                "average": average,
+                "percentage": category["percentage"]
+            })
+
+        student_average = compute_weighted_average(category_data)
+
         rows_out.append({
             "student_id": student["id"],
             "name": student["name"],
             "surname": student["surname"],
-            "grades": grades
+            "grades": grades,
+            "average": student_average
         })
 
     return {"activities": activities, "students": rows_out}
@@ -1173,13 +1222,7 @@ def get_student_grades(student_id: int):
                 "average": category_average
             })
 
-        graded_categories = [c for c in category_data if c["average"] is not None]
-        weight_sum = sum(c["percentage"] for c in graded_categories)
-
-        if graded_categories and weight_sum > 0:
-            current_average = sum(c["average"] * c["percentage"] for c in graded_categories) / weight_sum
-        else:
-            current_average = None
+        current_average = compute_weighted_average(category_data)
 
         if current_average is not None and category_data:
             projected_average = sum(
@@ -1453,13 +1496,18 @@ def get_student_plan(student_id: int):
             if weight is None:
                 weight = DEFAULT_CATEGORY_WEIGHT
 
+            # Si la tarea es para hoy o mañana, se vuelve
+            # obligatoria automáticamente, aunque el profesor
+            # la marcara como opcional.   <-- NUEVO
+            effective_mandatory = bool(task["mandatory"]) or hours_left <= 24
+
             raw_activities.append({
                 "type": "task", "id": task["id"], "title": task["title"],
                 "description": task["description"], "subject": subject,
                 "date": task["due_date"], "days_left": calculate_days_left(task["due_date"]),
                 "hours_left": hours_left, "category_weight": weight,
                 "priority": priority_label(hours_left),
-                "mandatory": bool(task["mandatory"])
+                "mandatory": effective_mandatory
             })
 
         exams = connection.execute(
