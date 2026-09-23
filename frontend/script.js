@@ -605,14 +605,35 @@ async function loadTeacherDashboard() {
 
 function renderTeacherClasses() {
   const container = document.getElementById("teacher-classes");
-  if (!container) return;
+  const dashboardContainer = document.getElementById("teacher-classes-dashboard");
 
-  container.innerHTML = "";
+  const render = (target) => {
+    if (!target) return;
+    target.innerHTML = "";
 
-  if (teacherClasses.length === 0) {
-    container.innerHTML = "<p>Aún no tienes clases.</p>";
-    return;
-  }
+    if (teacherClasses.length === 0) {
+      target.innerHTML = "<p>Aún no tienes clases.</p>";
+      return;
+    }
+
+    teacherClasses.forEach(classItem => {
+      const card = document.createElement("div");
+      card.className = "class-card";
+      card.innerHTML = `
+        <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
+        <span class="class-code">Código: ${classItem.code}</span>
+        <div class="class-card-actions">
+          <button type="button" class="secondary-btn" onclick="focusClassInTasks(${classItem.id})">Ver actividades</button>
+          <button type="button" class="secondary-btn danger-btn" onclick="deleteClass(${classItem.id})">🗑️ Eliminar clase</button>
+        </div>
+      `;
+      target.appendChild(card);
+    });
+  };
+
+  render(container);
+  render(dashboardContainer);
+}
 
   teacherClasses.forEach(classItem => {
     const card = document.createElement("div");
@@ -979,6 +1000,58 @@ function renderGradebook(container, classId, data) {
     container.innerHTML = "<p>Esta clase todavía no tiene actividades.</p>";
     return;
   }
+
+  if (data.students.length === 0) {
+    container.innerHTML = "<p>Esta clase todavía no tiene alumnos.</p>";
+    return;
+  }
+
+  let html = `<div class="gradebook-scroll"><table class="gradebook-table"><thead><tr><th>Alumno</th>`;
+
+  data.activities.forEach(activity => {
+    const icon = activity.type === "task" ? "📝" : activity.type === "exam" ? "📚" : "🗂️";
+    html += `<th>${icon} ${activity.title}</th>`;
+  });
+
+  html += `<th>Media</th></tr></thead><tbody>`;
+
+  data.students.forEach(student => {
+    html += `<tr><td>${student.surname}, ${student.name}</td>`;
+
+    data.activities.forEach(activity => {
+      const key = `${activity.type}-${activity.id}`;
+      const cell = student.grades[key] || {};
+      const gradeValue = (cell.grade !== null && cell.grade !== undefined) ? cell.grade : "";
+      const fileButton = cell.has_file
+        ? `<button type="button" class="gradebook-file-btn" onclick="viewSubmission(${activity.id}, ${student.student_id})" title="Ver archivo entregado">📎</button>`
+        : "";
+
+      html += `
+        <td>
+          <input
+            type="number" min="0" max="10" step="0.1"
+            class="gradebook-input"
+            value="${gradeValue}"
+            data-type="${activity.type}"
+            data-activity="${activity.id}"
+            data-student="${student.student_id}"
+            onchange="handleGradeChange(this)"
+          >${fileButton}
+        </td>
+      `;
+    });
+
+    const averageText = student.average !== null && student.average !== undefined
+      ? student.average.toFixed(2)
+      : "—";
+
+    html += `<td><strong>${averageText}</strong></td></tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+
+  container.innerHTML = html;
+}
 
   if (data.students.length === 0) {
     container.innerHTML = "<p>Esta clase todavía no tiene alumnos.</p>";
