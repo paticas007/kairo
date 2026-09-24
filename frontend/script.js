@@ -96,7 +96,9 @@ function initializeKairo() {
 // AVISOS FLOTANTES
 // ============================================================
 
-function showToast(message, type = "info") {
+function showToast(message, type) {
+  if (!type) type = "info";
+
   let container = document.getElementById("toast-container");
   if (!container) {
     container = document.createElement("div");
@@ -105,15 +107,19 @@ function showToast(message, type = "info") {
   }
 
   const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
+  toast.className = "toast toast-" + type;
   toast.textContent = message;
   container.appendChild(toast);
 
-  requestAnimationFrame(() => toast.classList.add("show"));
+  requestAnimationFrame(function () {
+    toast.classList.add("show");
+  });
 
-  setTimeout(() => {
+  setTimeout(function () {
     toast.classList.remove("show");
-    setTimeout(() => toast.remove(), 300);
+    setTimeout(function () {
+      toast.remove();
+    }, 300);
   }, 4000);
 }
 
@@ -122,31 +128,39 @@ function showToast(message, type = "info") {
 // ============================================================
 
 function showConfirm(message) {
-  return new Promise(resolve => {
+  return new Promise(function (resolve) {
     const overlay = document.createElement("div");
     overlay.className = "confirm-overlay";
-    overlay.innerHTML = `
-      <div class="confirm-box">
-        <p>${message}</p>
-        <div class="confirm-actions">
-          <button type="button" class="secondary-btn" id="confirm-cancel">Cancelar</button>
-          <button type="button" class="primary-btn danger-btn" id="confirm-ok">Confirmar</button>
-        </div>
-      </div>
-    `;
+    overlay.innerHTML =
+      '<div class="confirm-box">' +
+        "<p>" + message + "</p>" +
+        '<div class="confirm-actions">' +
+          '<button type="button" class="secondary-btn" id="confirm-cancel">Cancelar</button>' +
+          '<button type="button" class="primary-btn danger-btn" id="confirm-ok">Confirmar</button>' +
+        "</div>" +
+      "</div>";
+
     document.body.appendChild(overlay);
 
-    requestAnimationFrame(() => overlay.classList.add("show"));
+    requestAnimationFrame(function () {
+      overlay.classList.add("show");
+    });
 
-    const cleanup = (result) => {
+    function cleanup(result) {
       overlay.classList.remove("show");
-      setTimeout(() => overlay.remove(), 200);
+      setTimeout(function () {
+        overlay.remove();
+      }, 200);
       resolve(result);
-    };
+    }
 
-    overlay.querySelector("#confirm-ok").addEventListener("click", () => cleanup(true));
-    overlay.querySelector("#confirm-cancel").addEventListener("click", () => cleanup(false));
-    overlay.addEventListener("click", (event) => {
+    overlay.querySelector("#confirm-ok").addEventListener("click", function () {
+      cleanup(true);
+    });
+    overlay.querySelector("#confirm-cancel").addEventListener("click", function () {
+      cleanup(false);
+    });
+    overlay.addEventListener("click", function (event) {
       if (event.target === overlay) cleanup(false);
     });
   });
@@ -158,7 +172,7 @@ function showConfirm(message) {
 
 async function handleAdminLogin() {
   const secretInput = document.getElementById("admin-secret-input");
-  const secret = secretInput?.value;
+  const secret = secretInput ? secretInput.value : "";
 
   if (!secret) {
     showToast("Escribe la clave de administrador.", "error");
@@ -168,13 +182,15 @@ async function handleAdminLogin() {
   try {
     await api("/api/admin/login", {
       method: "POST",
-      body: JSON.stringify({ secret })
+      body: JSON.stringify({ secret: secret })
     });
 
     adminSecret = secret;
 
-    document.getElementById("admin-login-step")?.classList.add("hidden");
-    document.getElementById("admin-panel-step")?.classList.remove("hidden");
+    const step1 = document.getElementById("admin-login-step");
+    const step2 = document.getElementById("admin-panel-step");
+    if (step1) step1.classList.add("hidden");
+    if (step2) step2.classList.remove("hidden");
     if (secretInput) secretInput.value = "";
 
   } catch (error) {
@@ -200,7 +216,8 @@ async function handleAdminResetDatabase() {
     });
 
     showToast(result.message, "success");
-    document.getElementById("modal-admin-login")?.close();
+    const modal = document.getElementById("modal-admin-login");
+    if (modal) modal.close();
 
   } catch (error) {
     showToast(error.message, "error");
@@ -216,12 +233,14 @@ function setActiveView(role, viewName) {
   const shell = document.getElementById(shellId);
   if (!shell) return;
 
-  shell.querySelectorAll(".nav-item[data-view]").forEach(btn => {
+  const navItems = shell.querySelectorAll(".nav-item[data-view]");
+  navItems.forEach(function (btn) {
     btn.classList.toggle("active", btn.dataset.view === viewName);
   });
 
-  shell.querySelectorAll(".view").forEach(view => {
-    view.classList.toggle("hidden", view.id !== `${role}-view-${viewName}`);
+  const views = shell.querySelectorAll(".view");
+  views.forEach(function (view) {
+    view.classList.toggle("hidden", view.id !== (role + "-view-" + viewName));
   });
 }
 window.setActiveView = setActiveView;
@@ -231,14 +250,18 @@ window.setActiveView = setActiveView;
 // ============================================================
 
 function initChoiceGroups() {
-  document.querySelectorAll(".choice-group").forEach(group => {
+  const groups = document.querySelectorAll(".choice-group");
+  groups.forEach(function (group) {
     const targetId = group.dataset.target;
     const hiddenInput = document.getElementById(targetId);
     if (!hiddenInput) return;
 
-    group.querySelectorAll(".choice-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        group.querySelectorAll(".choice-btn").forEach(b => b.classList.remove("active"));
+    const buttons = group.querySelectorAll(".choice-btn");
+    buttons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        buttons.forEach(function (b) {
+          b.classList.remove("active");
+        });
         btn.classList.add("active");
         hiddenInput.value = btn.dataset.value;
 
@@ -282,9 +305,12 @@ function unlockButton(button) {
 // CATEGORÍAS DE EVALUACIÓN
 // ============================================================
 
-function addCategoryRow(name = "", percentage = "") {
+function addCategoryRow(name, percentage) {
+  if (name === undefined) name = "";
+  if (percentage === undefined) percentage = "";
+
   categoryRowCounter++;
-  const rowId = `category-row-${categoryRowCounter}`;
+  const rowId = "category-row-" + categoryRowCounter;
 
   const container = document.getElementById("category-rows");
   if (!container) return;
@@ -296,11 +322,10 @@ function addCategoryRow(name = "", percentage = "") {
   row.style.gap = "8px";
   row.style.marginBottom = "8px";
 
-  row.innerHTML = `
-    <input type="text" class="category-name" placeholder="Ej: Pruebas periódicas" value="${name}" style="flex: 2;">
-    <input type="number" class="category-percentage" placeholder="%" min="0" max="100" value="${percentage}" style="flex: 1;">
-    <button type="button" class="secondary-btn danger-btn" onclick="removeCategoryRow('${rowId}')">✕</button>
-  `;
+  row.innerHTML =
+    '<input type="text" class="category-name" placeholder="Ej: Pruebas periódicas" value="' + name + '" style="flex: 2;">' +
+    '<input type="number" class="category-percentage" placeholder="%" min="0" max="100" value="' + percentage + '" style="flex: 1;">' +
+    '<button type="button" class="secondary-btn danger-btn" onclick="removeCategoryRow(\'' + rowId + '\')">✕</button>';
 
   container.appendChild(row);
 
@@ -319,13 +344,13 @@ window.removeCategoryRow = removeCategoryRow;
 function updateCategoryTotal() {
   const percentageInputs = document.querySelectorAll(".category-percentage");
   let total = 0;
-  percentageInputs.forEach(input => {
+  percentageInputs.forEach(function (input) {
     total += Number(input.value) || 0;
   });
 
   const totalLabel = document.getElementById("category-total");
   if (totalLabel) {
-    totalLabel.textContent = `Total: ${total}%`;
+    totalLabel.textContent = "Total: " + total + "%";
     totalLabel.style.color = total === 100 ? "var(--success)" : "var(--danger)";
   }
 }
@@ -333,11 +358,11 @@ function updateCategoryTotal() {
 function getCategoriesFromForm() {
   const rows = document.querySelectorAll("#category-rows .category-row");
   const categories = [];
-  rows.forEach(row => {
+  rows.forEach(function (row) {
     const name = row.querySelector(".category-name").value.trim();
     const percentage = Number(row.querySelector(".category-percentage").value) || 0;
     if (name) {
-      categories.push({ name, percentage });
+      categories.push({ name: name, percentage: percentage });
     }
   });
   return categories;
@@ -353,13 +378,33 @@ function resetCategoryRows() {
 // API
 // ============================================================
 
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || "Ha ocurrido un error.");
+async function api(url, options) {
+  if (!options) options = {};
+
+  const headers = { "Content-Type": "application/json" };
+  if (options.headers) {
+    for (const key in options.headers) {
+      headers[key] = options.headers[key];
+    }
+  }
+
+  const fetchOptions = { headers: headers };
+  if (options.method) fetchOptions.method = options.method;
+  if (options.body) fetchOptions.body = options.body;
+
+  const response = await fetch(url, fetchOptions);
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (e) {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(data.detail || "Ha ocurrido un error.");
+  }
+
   return data;
 }
 
@@ -369,28 +414,43 @@ async function api(url, options = {}) {
 
 function selectRole(role) {
   selectedRole = role;
-  document.getElementById("role-section")?.classList.add("hidden");
-  document.getElementById("auth-section")?.classList.remove("hidden");
+
+  const roleSection = document.getElementById("role-section");
+  const authSection = document.getElementById("auth-section");
+
+  if (roleSection) roleSection.classList.add("hidden");
+  if (authSection) authSection.classList.remove("hidden");
+
   showLogin();
 }
 window.selectRole = selectRole;
 
 function backToRoles() {
-  document.getElementById("auth-section")?.classList.add("hidden");
-  document.getElementById("role-section")?.classList.remove("hidden");
+  const authSection = document.getElementById("auth-section");
+  const roleSection = document.getElementById("role-section");
+
+  if (authSection) authSection.classList.add("hidden");
+  if (roleSection) roleSection.classList.remove("hidden");
+
   selectedRole = null;
 }
 window.backToRoles = backToRoles;
 
 function showLogin() {
-  document.getElementById("login-container")?.classList.remove("hidden");
-  document.getElementById("register-container")?.classList.add("hidden");
+  const loginContainer = document.getElementById("login-container");
+  const registerContainer = document.getElementById("register-container");
+
+  if (loginContainer) loginContainer.classList.remove("hidden");
+  if (registerContainer) registerContainer.classList.add("hidden");
 }
 window.showLogin = showLogin;
 
 function showRegister() {
-  document.getElementById("login-container")?.classList.add("hidden");
-  document.getElementById("register-container")?.classList.remove("hidden");
+  const loginContainer = document.getElementById("login-container");
+  const registerContainer = document.getElementById("register-container");
+
+  if (loginContainer) loginContainer.classList.add("hidden");
+  if (registerContainer) registerContainer.classList.remove("hidden");
 }
 window.showRegister = showRegister;
 
@@ -398,15 +458,24 @@ async function handleRegister(event) {
   event.preventDefault();
   const submitButton = lockButton(event.target);
 
+  const nameEl = document.getElementById("register-name");
+  const surnameEl = document.getElementById("register-surname");
+  const emailEl = document.getElementById("register-email");
+  const passwordEl = document.getElementById("register-password");
+  const courseEl = document.getElementById("register-course");
+  const centerEl = document.getElementById("register-center");
+  const questionEl = document.getElementById("register-security-question");
+  const answerEl = document.getElementById("register-security-answer");
+
   const data = {
-    name: document.getElementById("register-name")?.value.trim(),
-    surname: document.getElementById("register-surname")?.value.trim(),
-    email: document.getElementById("register-email")?.value.trim(),
-    password: document.getElementById("register-password")?.value,
-    course: document.getElementById("register-course")?.value.trim(),
-    center: document.getElementById("register-center")?.value.trim(),
-    security_question: document.getElementById("register-security-question")?.value,
-    security_answer: document.getElementById("register-security-answer")?.value.trim()
+    name: nameEl ? nameEl.value.trim() : "",
+    surname: surnameEl ? surnameEl.value.trim() : "",
+    email: emailEl ? emailEl.value.trim() : "",
+    password: passwordEl ? passwordEl.value : "",
+    course: courseEl ? courseEl.value.trim() : "",
+    center: centerEl ? centerEl.value.trim() : "",
+    security_question: questionEl ? questionEl.value : "",
+    security_answer: answerEl ? answerEl.value.trim() : ""
   };
 
   try {
@@ -444,8 +513,10 @@ async function handleLogin(event) {
   event.preventDefault();
   const submitButton = lockButton(event.target);
 
-  const email = document.getElementById("login-email")?.value.trim();
-  const password = document.getElementById("login-password")?.value;
+  const emailEl = document.getElementById("login-email");
+  const passwordEl = document.getElementById("login-password");
+  const email = emailEl ? emailEl.value.trim() : "";
+  const password = passwordEl ? passwordEl.value : "";
 
   if (!selectedRole) {
     showToast("Selecciona primero si eres estudiante o profesor.", "error");
@@ -456,7 +527,7 @@ async function handleLogin(event) {
   try {
     const result = await api("/api/login", {
       method: "POST",
-      body: JSON.stringify({ email, password, role: selectedRole })
+      body: JSON.stringify({ email: email, password: password, role: selectedRole })
     });
 
     localStorage.setItem("kairo_token", result.token);
@@ -474,13 +545,17 @@ async function restoreSession() {
   if (!currentToken) return;
 
   try {
-    const result = await api(`/api/auth/me/${currentToken}`);
+    const result = await api("/api/auth/me/" + currentToken);
     currentUser = result.user;
     selectedRole = result.role;
 
-    document.getElementById("pre-login-topbar")?.classList.add("hidden");
-    document.getElementById("role-section")?.classList.add("hidden");
-    document.getElementById("auth-section")?.classList.add("hidden");
+    const preTopbar = document.getElementById("pre-login-topbar");
+    const roleSection = document.getElementById("role-section");
+    const authSection = document.getElementById("auth-section");
+
+    if (preTopbar) preTopbar.classList.add("hidden");
+    if (roleSection) roleSection.classList.add("hidden");
+    if (authSection) authSection.classList.add("hidden");
 
     document.body.classList.remove("role-teacher", "role-student");
     document.body.classList.add(selectedRole === "teacher" ? "role-teacher" : "role-student");
@@ -489,12 +564,12 @@ async function restoreSession() {
     const studentShell = document.getElementById("student-shell");
 
     if (selectedRole === "teacher") {
-      teacherShell?.classList.remove("hidden");
-      studentShell?.classList.add("hidden");
+      if (teacherShell) teacherShell.classList.remove("hidden");
+      if (studentShell) studentShell.classList.add("hidden");
       await loadTeacherDashboard();
     } else {
-      studentShell?.classList.remove("hidden");
-      teacherShell?.classList.add("hidden");
+      if (studentShell) studentShell.classList.remove("hidden");
+      if (teacherShell) teacherShell.classList.add("hidden");
       await loadStudentDashboard();
     }
 
@@ -508,7 +583,7 @@ async function restoreSession() {
 async function handleLogout() {
   try {
     if (currentToken) {
-      await api(`/api/auth/logout/${currentToken}`, { method: "DELETE" });
+      await api("/api/auth/logout/" + currentToken, { method: "DELETE" });
     }
   } catch (error) {
     console.error(error);
@@ -526,16 +601,22 @@ async function handleLogout() {
 // ============================================================
 
 function openPasswordRecovery() {
-  document.getElementById("recovery-step-email")?.classList.remove("hidden");
-  document.getElementById("recovery-reset-form")?.classList.add("hidden");
+  const step1 = document.getElementById("recovery-step-email");
+  const step2 = document.getElementById("recovery-reset-form");
+  if (step1) step1.classList.remove("hidden");
+  if (step2) step2.classList.add("hidden");
+
   const emailInput = document.getElementById("recovery-email");
   if (emailInput) emailInput.value = "";
-  document.getElementById("modal-password-recovery")?.showModal();
+
+  const modal = document.getElementById("modal-password-recovery");
+  if (modal) modal.showModal();
 }
 window.openPasswordRecovery = openPasswordRecovery;
 
 async function handleFindRecoveryAccount() {
-  const email = document.getElementById("recovery-email")?.value.trim();
+  const emailEl = document.getElementById("recovery-email");
+  const email = emailEl ? emailEl.value.trim() : "";
 
   if (!email) {
     showToast("Introduce tu correo electrónico.", "error");
@@ -549,14 +630,16 @@ async function handleFindRecoveryAccount() {
   try {
     const result = await api("/api/password-recovery/question", {
       method: "POST",
-      body: JSON.stringify({ email, role: selectedRole })
+      body: JSON.stringify({ email: email, role: selectedRole })
     });
 
     const questionLabel = document.getElementById("recovery-question");
     if (questionLabel) questionLabel.textContent = result.question;
 
-    document.getElementById("recovery-step-email")?.classList.add("hidden");
-    document.getElementById("recovery-reset-form")?.classList.remove("hidden");
+    const step1 = document.getElementById("recovery-step-email");
+    const step2 = document.getElementById("recovery-reset-form");
+    if (step1) step1.classList.add("hidden");
+    if (step2) step2.classList.remove("hidden");
 
   } catch (error) {
     showToast(error.message, "error");
@@ -567,18 +650,23 @@ async function handleResetPassword(event) {
   event.preventDefault();
   const submitButton = lockButton(event.target);
 
-  const email = document.getElementById("recovery-email")?.value.trim();
-  const answer = document.getElementById("recovery-answer")?.value;
-  const newPassword = document.getElementById("recovery-new-password")?.value;
+  const emailEl = document.getElementById("recovery-email");
+  const answerEl = document.getElementById("recovery-answer");
+  const newPasswordEl = document.getElementById("recovery-new-password");
+
+  const email = emailEl ? emailEl.value.trim() : "";
+  const answer = answerEl ? answerEl.value : "";
+  const newPassword = newPasswordEl ? newPasswordEl.value : "";
 
   try {
     await api("/api/password-recovery/reset", {
       method: "POST",
-      body: JSON.stringify({ email, role: selectedRole, answer, new_password: newPassword })
+      body: JSON.stringify({ email: email, role: selectedRole, answer: answer, new_password: newPassword })
     });
 
     showToast("Contraseña actualizada. Ya puedes iniciar sesión.", "success");
-    document.getElementById("modal-password-recovery")?.close();
+    const modal = document.getElementById("modal-password-recovery");
+    if (modal) modal.close();
     event.target.reset();
 
   } catch (error) {
@@ -594,9 +682,9 @@ async function handleResetPassword(event) {
 
 async function loadTeacherDashboard() {
   const welcome = document.getElementById("teacher-welcome");
-  if (welcome) welcome.textContent = `Bienvenido, ${currentUser.name}.`;
+  if (welcome) welcome.textContent = "Bienvenido, " + currentUser.name + ".";
 
-  teacherClasses = await api(`/api/teachers/${currentUser.id}/classes`);
+  teacherClasses = await api("/api/teachers/" + currentUser.id + "/classes");
 
   renderTeacherClasses();
   updateClassSelectors();
@@ -607,7 +695,7 @@ function renderTeacherClasses() {
   const container = document.getElementById("teacher-classes");
   const dashboardContainer = document.getElementById("teacher-classes-dashboard");
 
-  const render = (target) => {
+  function render(target) {
     if (!target) return;
     target.innerHTML = "";
 
@@ -616,38 +704,22 @@ function renderTeacherClasses() {
       return;
     }
 
-    teacherClasses.forEach(classItem => {
+    teacherClasses.forEach(function (classItem) {
       const card = document.createElement("div");
       card.className = "class-card";
-      card.innerHTML = `
-        <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
-        <span class="class-code">Código: ${classItem.code}</span>
-        <div class="class-card-actions">
-          <button type="button" class="secondary-btn" onclick="focusClassInTasks(${classItem.id})">Ver actividades</button>
-          <button type="button" class="secondary-btn danger-btn" onclick="deleteClass(${classItem.id})">🗑️ Eliminar clase</button>
-        </div>
-      `;
+      card.innerHTML =
+        "<h4>" + classItem.course + " " + classItem.group_name + " — " + classItem.subject + "</h4>" +
+        '<span class="class-code">Código: ' + classItem.code + "</span>" +
+        '<div class="class-card-actions">' +
+          '<button type="button" class="secondary-btn" onclick="focusClassInTasks(' + classItem.id + ')">Ver actividades</button>' +
+          '<button type="button" class="secondary-btn danger-btn" onclick="deleteClass(' + classItem.id + ')">🗑️ Eliminar clase</button>' +
+        "</div>";
       target.appendChild(card);
     });
-  };
+  }
 
   render(container);
   render(dashboardContainer);
-}
-
-  teacherClasses.forEach(classItem => {
-    const card = document.createElement("div");
-    card.className = "class-card";
-    card.innerHTML = `
-      <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
-      <span class="class-code">Código: ${classItem.code}</span>
-      <div class="class-card-actions">
-        <button type="button" class="secondary-btn" onclick="focusClassInTasks(${classItem.id})">Ver actividades</button>
-        <button type="button" class="secondary-btn danger-btn" onclick="deleteClass(${classItem.id})">🗑️ Eliminar clase</button>
-      </div>
-    `;
-    container.appendChild(card);
-  });
 }
 
 function focusClassInTasks(classId) {
@@ -670,7 +742,7 @@ async function deleteClass(classId) {
   if (!confirmed) return;
 
   try {
-    await api(`/api/classes/${classId}?teacher_id=${currentUser.id}`, {
+    await api("/api/classes/" + classId + "?teacher_id=" + currentUser.id, {
       method: "DELETE"
     });
 
@@ -687,13 +759,15 @@ function updateClassSelectors() {
   const progressSelect = document.getElementById("progress-class");
   const gradebookSelect = document.getElementById("gradebook-class");
 
-  [activitySelect, progressSelect, gradebookSelect].forEach(select => {
+  const selects = [activitySelect, progressSelect, gradebookSelect];
+
+  selects.forEach(function (select) {
     if (!select) return;
-    select.innerHTML = `<option value="">Selecciona una clase</option>`;
-    teacherClasses.forEach(classItem => {
+    select.innerHTML = '<option value="">Selecciona una clase</option>';
+    teacherClasses.forEach(function (classItem) {
       const option = document.createElement("option");
       option.value = classItem.id;
-      option.textContent = `${classItem.course} ${classItem.group_name} — ${classItem.subject}`;
+      option.textContent = classItem.course + " " + classItem.group_name + " — " + classItem.subject;
       select.appendChild(option);
     });
   });
@@ -704,9 +778,13 @@ async function handleCreateClass(event) {
   const submitButton = lockButton(event.target);
 
   try {
-    const course = document.getElementById("class-course")?.value.trim();
-    const groupName = document.getElementById("class-group")?.value.trim();
-    const subject = document.getElementById("class-subject")?.value.trim();
+    const courseEl = document.getElementById("class-course");
+    const groupEl = document.getElementById("class-group");
+    const subjectEl = document.getElementById("class-subject");
+
+    const course = courseEl ? courseEl.value.trim() : "";
+    const groupName = groupEl ? groupEl.value.trim() : "";
+    const subject = subjectEl ? subjectEl.value.trim() : "";
 
     if (!course || !groupName || !subject) {
       showToast("Rellena todos los campos de la clase.", "error");
@@ -720,27 +798,31 @@ async function handleCreateClass(event) {
       return;
     }
 
-    const total = categories.reduce((sum, cat) => sum + cat.percentage, 0);
+    let total = 0;
+    categories.forEach(function (cat) {
+      total += cat.percentage;
+    });
 
     if (Math.abs(total - 100) > 0.01) {
-      showToast(`Los porcentajes deben sumar exactamente 100%. Ahora mismo suman ${total}%.`, "error");
+      showToast("Los porcentajes deben sumar exactamente 100%. Ahora mismo suman " + total + "%.", "error");
       return;
     }
 
     const result = await api("/api/classes", {
       method: "POST",
-      body: JSON.stringify({ teacher_id: currentUser.id, course, group_name: groupName, subject })
+      body: JSON.stringify({ teacher_id: currentUser.id, course: course, group_name: groupName, subject: subject })
     });
 
-    await api(`/api/classes/${result.id}/evaluation-categories`, {
+    await api("/api/classes/" + result.id + "/evaluation-categories", {
       method: "POST",
-      body: JSON.stringify({ categories })
+      body: JSON.stringify({ categories: categories })
     });
 
-    showToast(`Clase creada correctamente.\nCódigo: ${result.code}`, "success");
+    showToast("Clase creada correctamente.\nCódigo: " + result.code, "success");
     event.target.reset();
     resetCategoryRows();
-    document.getElementById("modal-create-class")?.close();
+    const modal = document.getElementById("modal-create-class");
+    if (modal) modal.close();
 
     await loadTeacherDashboard();
 
@@ -756,16 +838,16 @@ async function handleActivityClassChange(event) {
   const categorySelect = document.getElementById("activity-category");
   if (!categorySelect) return;
 
-  categorySelect.innerHTML = `<option value="">Sin categoría de evaluación</option>`;
+  categorySelect.innerHTML = '<option value="">Sin categoría de evaluación</option>';
 
   if (!classId) return;
 
   try {
-    const categories = await api(`/api/classes/${classId}/evaluation-categories`);
-    categories.forEach(category => {
+    const categories = await api("/api/classes/" + classId + "/evaluation-categories");
+    categories.forEach(function (category) {
       const option = document.createElement("option");
       option.value = category.id;
-      option.textContent = `${category.name} (${category.percentage}%)`;
+      option.textContent = category.name + " (" + category.percentage + "%)";
       categorySelect.appendChild(option);
     });
   } catch (error) {
@@ -779,12 +861,19 @@ async function handleCreateActivity(event) {
 
   const classSelect = document.getElementById("activity-class");
   const categorySelect = document.getElementById("activity-category");
-  const type = document.getElementById("activity-type")?.value;
-  const title = document.getElementById("activity-title")?.value.trim();
-  const description = document.getElementById("activity-description")?.value.trim();
-  const date = document.getElementById("activity-date")?.value;
-  const priority = document.getElementById("activity-priority")?.value;
-  const mandatory = document.getElementById("activity-mandatory")?.checked ?? true;
+  const typeEl = document.getElementById("activity-type");
+  const titleEl = document.getElementById("activity-title");
+  const descriptionEl = document.getElementById("activity-description");
+  const dateEl = document.getElementById("activity-date");
+  const priorityEl = document.getElementById("activity-priority");
+  const mandatoryEl = document.getElementById("activity-mandatory");
+
+  const type = typeEl ? typeEl.value : "";
+  const title = titleEl ? titleEl.value.trim() : "";
+  const description = descriptionEl ? descriptionEl.value.trim() : "";
+  const date = dateEl ? dateEl.value : "";
+  const priority = priorityEl ? priorityEl.value : "media";
+  const mandatory = mandatoryEl ? mandatoryEl.checked : true;
 
   if (!classSelect || !classSelect.value) {
     showToast("Selecciona una clase.", "error");
@@ -804,17 +893,17 @@ async function handleCreateActivity(event) {
     if (type === "task") {
       await api("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, due_date: date, priority, mandatory })
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, due_date: date, priority: priority, mandatory: mandatory })
       });
     } else if (type === "exam") {
       await api("/api/exams", {
         method: "POST",
-        body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, exam_date: date, importance: priority })
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, exam_date: date, importance: priority })
       });
     } else if (type === "project") {
       await api("/api/projects", {
         method: "POST",
-        body: JSON.stringify({ class_id: classId, category_id: categoryId, title, description, due_date: date, priority })
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, due_date: date, priority: priority })
       });
     } else {
       showToast("Selecciona el tipo de actividad.", "error");
@@ -824,7 +913,8 @@ async function handleCreateActivity(event) {
     showToast("Actividad creada correctamente.", "success");
     event.target.reset();
     toggleMandatoryVisibility("task");
-    document.getElementById("modal-create-activity")?.close();
+    const modal = document.getElementById("modal-create-activity");
+    if (modal) modal.close();
 
     await loadTeacherActivities();
 
@@ -840,36 +930,35 @@ async function loadTeacherActivities() {
   const dashboardContainer = document.getElementById("teacher-activities-dashboard");
 
   try {
-    const activities = await api(`/api/teachers/${currentUser.id}/activities`);
+    const activities = await api("/api/teachers/" + currentUser.id + "/activities");
     teacherActivitiesCache = activities;
 
     updateTeacherMetrics(activities);
 
-    const render = (target, list, emptyText) => {
+    function render(target, list, emptyText) {
       if (!target) return;
       target.innerHTML = "";
       if (list.length === 0) {
-        target.innerHTML = `<p>${emptyText}</p>`;
+        target.innerHTML = "<p>" + emptyText + "</p>";
         return;
       }
-      list.forEach(activity => {
+      list.forEach(function (activity) {
         const element = document.createElement("div");
-        element.className = `plan-item priority-${(activity.priority || "media").toLowerCase()}`;
+        element.className = "plan-item priority-" + (activity.priority || "media").toLowerCase();
 
         let typeLabel = "TAREA";
         if (activity.type === "exam") typeLabel = "EXAMEN";
         else if (activity.type === "project") typeLabel = "PROYECTO";
 
-        const categoryLabel = activity.category_name ? ` · ${activity.category_name}` : "";
+        const categoryLabel = activity.category_name ? (" · " + activity.category_name) : "";
 
-        element.innerHTML = `
-          <div class="plan-title">${typeLabel} · ${activity.title}</div>
-          <div class="plan-meta">${activity.course} ${activity.group_name} · ${activity.subject}${categoryLabel} · ${activity.activity_date}</div>
-          <button type="button" class="secondary-btn danger-btn" onclick="deleteActivity('${activity.type}', ${activity.id})">🗑️ Eliminar</button>
-        `;
+        element.innerHTML =
+          '<div class="plan-title">' + typeLabel + " · " + activity.title + "</div>" +
+          '<div class="plan-meta">' + activity.course + " " + activity.group_name + " · " + activity.subject + categoryLabel + " · " + activity.activity_date + "</div>" +
+          '<button type="button" class="secondary-btn danger-btn" onclick="deleteActivity(\'' + activity.type + "', " + activity.id + ')">🗑️ Eliminar</button>';
         target.appendChild(element);
       });
-    };
+    }
 
     render(container, activities, "Aún no has creado actividades.");
     render(dashboardContainer, activities.slice(0, 5), "Aún no has creado actividades.");
@@ -884,13 +973,13 @@ async function deleteActivity(type, id) {
   if (!confirmed) return;
 
   const endpoints = {
-    task: `/api/tasks/${id}`,
-    exam: `/api/exams/${id}`,
-    project: `/api/projects/${id}`
+    task: "/api/tasks/" + id,
+    exam: "/api/exams/" + id,
+    project: "/api/projects/" + id
   };
 
   try {
-    await api(`${endpoints[type]}?teacher_id=${currentUser.id}`, { method: "DELETE" });
+    await api(endpoints[type] + "?teacher_id=" + currentUser.id, { method: "DELETE" });
     await loadTeacherActivities();
   } catch (error) {
     showToast(error.message, "error");
@@ -899,15 +988,15 @@ async function deleteActivity(type, id) {
 window.deleteActivity = deleteActivity;
 
 function updateTeacherMetrics(activities) {
-  const setMetric = (id, value) => {
+  function setMetric(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
-  };
+  }
 
   setMetric("metric-classes", teacherClasses.length);
-  setMetric("metric-tasks", activities.filter(a => a.type === "task").length);
-  setMetric("metric-exams", activities.filter(a => a.type === "exam").length);
-  setMetric("metric-projects", activities.filter(a => a.type === "project").length);
+  setMetric("metric-tasks", activities.filter(function (a) { return a.type === "task"; }).length);
+  setMetric("metric-exams", activities.filter(function (a) { return a.type === "exam"; }).length);
+  setMetric("metric-projects", activities.filter(function (a) { return a.type === "project"; }).length);
 }
 
 // ============================================================
@@ -923,22 +1012,21 @@ async function handleProgressClassChange(event) {
   if (!classId) return;
 
   try {
-    const tasks = await api(`/api/classes/${classId}/tasks`);
+    const tasks = await api("/api/classes/" + classId + "/tasks");
 
     if (tasks.length === 0) {
       container.innerHTML = "<p>Esta clase todavía no tiene tareas.</p>";
       return;
     }
 
-    tasks.forEach(task => {
+    tasks.forEach(function (task) {
       const item = document.createElement("div");
       item.className = "plan-item";
-      item.innerHTML = `
-        <div class="plan-title">${task.title}</div>
-        <div class="plan-meta">Entrega: ${task.due_date}</div>
-        <button type="button" class="secondary-btn" onclick="loadTaskProgress(${classId}, ${task.id})">Ver quién la ha hecho</button>
-        <div id="progress-result-${task.id}"></div>
-      `;
+      item.innerHTML =
+        '<div class="plan-title">' + task.title + "</div>" +
+        '<div class="plan-meta">Entrega: ' + task.due_date + "</div>" +
+        '<button type="button" class="secondary-btn" onclick="loadTaskProgress(' + classId + ", " + task.id + ')">Ver quién la ha hecho</button>' +
+        '<div id="progress-result-' + task.id + '"></div>';
       container.appendChild(item);
     });
 
@@ -949,22 +1037,22 @@ async function handleProgressClassChange(event) {
 }
 
 async function loadTaskProgress(classId, taskId) {
-  const resultContainer = document.getElementById(`progress-result-${taskId}`);
+  const resultContainer = document.getElementById("progress-result-" + taskId);
   if (!resultContainer) return;
 
   resultContainer.innerHTML = "<p>Cargando...</p>";
 
   try {
-    const students = await api(`/api/classes/${classId}/tasks/${taskId}/progress`);
+    const students = await api("/api/classes/" + classId + "/tasks/" + taskId + "/progress");
 
     if (students.length === 0) {
       resultContainer.innerHTML = "<p>Esta clase todavía no tiene alumnos.</p>";
       return;
     }
 
-    resultContainer.innerHTML = students.map(student => `
-      <div class="progress-row">${student.completed ? "✅" : "⬜"} ${student.name} ${student.surname}</div>
-    `).join("");
+    resultContainer.innerHTML = students.map(function (student) {
+      return '<div class="progress-row">' + (student.completed ? "✅" : "⬜") + " " + student.name + " " + student.surname + "</div>";
+    }).join("");
 
   } catch (error) {
     console.error("Error cargando el seguimiento:", error);
@@ -988,7 +1076,7 @@ async function handleGradebookClassChange(event) {
   container.innerHTML = "<p>Cargando...</p>";
 
   try {
-    const data = await api(`/api/classes/${classId}/gradebook`);
+    const data = await api("/api/classes/" + classId + "/gradebook");
     renderGradebook(container, classId, data);
   } catch (error) {
     container.innerHTML = "<p>No se pudo cargar la tabla de notas.</p>";
@@ -1006,97 +1094,43 @@ function renderGradebook(container, classId, data) {
     return;
   }
 
-  let html = `<div class="gradebook-scroll"><table class="gradebook-table"><thead><tr><th>Alumno</th>`;
+  let html = '<div class="gradebook-scroll"><table class="gradebook-table"><thead><tr><th>Alumno</th>';
 
-  data.activities.forEach(activity => {
-    const icon = activity.type === "task" ? "📝" : activity.type === "exam" ? "📚" : "🗂️";
-    html += `<th>${icon} ${activity.title}</th>`;
+  data.activities.forEach(function (activity) {
+    const icon = activity.type === "task" ? "📝" : (activity.type === "exam" ? "📚" : "🗂️");
+    html += "<th>" + icon + " " + activity.title + "</th>";
   });
 
-  html += `<th>Media</th></tr></thead><tbody>`;
+  html += "<th>Media</th></tr></thead><tbody>";
 
-  data.students.forEach(student => {
-    html += `<tr><td>${student.surname}, ${student.name}</td>`;
+  data.students.forEach(function (student) {
+    html += "<tr><td>" + student.surname + ", " + student.name + "</td>";
 
-    data.activities.forEach(activity => {
-      const key = `${activity.type}-${activity.id}`;
+    data.activities.forEach(function (activity) {
+      const key = activity.type + "-" + activity.id;
       const cell = student.grades[key] || {};
       const gradeValue = (cell.grade !== null && cell.grade !== undefined) ? cell.grade : "";
       const fileButton = cell.has_file
-        ? `<button type="button" class="gradebook-file-btn" onclick="viewSubmission(${activity.id}, ${student.student_id})" title="Ver archivo entregado">📎</button>`
+        ? '<button type="button" class="gradebook-file-btn" onclick="viewSubmission(' + activity.id + ", " + student.student_id + ')" title="Ver archivo entregado">📎</button>'
         : "";
 
-      html += `
-        <td>
-          <input
-            type="number" min="0" max="10" step="0.1"
-            class="gradebook-input"
-            value="${gradeValue}"
-            data-type="${activity.type}"
-            data-activity="${activity.id}"
-            data-student="${student.student_id}"
-            onchange="handleGradeChange(this)"
-          >${fileButton}
-        </td>
-      `;
+      html +=
+        "<td>" +
+          '<input type="number" min="0" max="10" step="0.1" class="gradebook-input" value="' + gradeValue + '" ' +
+          'data-type="' + activity.type + '" data-activity="' + activity.id + '" data-student="' + student.student_id + '" ' +
+          'onchange="handleGradeChange(this)">' +
+          fileButton +
+        "</td>";
     });
 
-    const averageText = student.average !== null && student.average !== undefined
+    const averageText = (student.average !== null && student.average !== undefined)
       ? student.average.toFixed(2)
       : "—";
 
-    html += `<td><strong>${averageText}</strong></td></tr>`;
+    html += "<td><strong>" + averageText + "</strong></td></tr>";
   });
 
-  html += `</tbody></table></div>`;
-
-  container.innerHTML = html;
-}
-
-  if (data.students.length === 0) {
-    container.innerHTML = "<p>Esta clase todavía no tiene alumnos.</p>";
-    return;
-  }
-
-  let html = `<div class="gradebook-scroll"><table class="gradebook-table"><thead><tr><th>Alumno</th>`;
-
-  data.activities.forEach(activity => {
-    const icon = activity.type === "task" ? "📝" : activity.type === "exam" ? "📚" : "🗂️";
-    html += `<th>${icon} ${activity.title}</th>`;
-  });
-
-  html += `</tr></thead><tbody>`;
-
-  data.students.forEach(student => {
-    html += `<tr><td>${student.surname}, ${student.name}</td>`;
-
-    data.activities.forEach(activity => {
-      const key = `${activity.type}-${activity.id}`;
-      const cell = student.grades[key] || {};
-      const gradeValue = (cell.grade !== null && cell.grade !== undefined) ? cell.grade : "";
-      const fileButton = cell.has_file
-        ? `<button type="button" class="gradebook-file-btn" onclick="viewSubmission(${activity.id}, ${student.student_id})" title="Ver archivo entregado">📎</button>`
-        : "";
-
-      html += `
-        <td>
-          <input
-            type="number" min="0" max="10" step="0.1"
-            class="gradebook-input"
-            value="${gradeValue}"
-            data-type="${activity.type}"
-            data-activity="${activity.id}"
-            data-student="${student.student_id}"
-            onchange="handleGradeChange(this)"
-          >${fileButton}
-        </td>
-      `;
-    });
-
-    html += `</tr>`;
-  });
-
-  html += `</tbody></table></div>`;
+  html += "</tbody></table></div>";
 
   container.innerHTML = html;
 }
@@ -1118,7 +1152,7 @@ async function handleGradeChange(input) {
         activity_type: input.dataset.type,
         activity_id: Number(input.dataset.activity),
         student_id: Number(input.dataset.student),
-        grade
+        grade: grade
       })
     });
 
@@ -1132,8 +1166,8 @@ window.handleGradeChange = handleGradeChange;
 
 async function viewSubmission(taskId, studentId) {
   try {
-    const file = await api(`/api/tasks/${taskId}/submissions/${studentId}/file`);
-    const dataUrl = `data:${file.file_type};base64,${file.file_data}`;
+    const file = await api("/api/tasks/" + taskId + "/submissions/" + studentId + "/file");
+    const dataUrl = "data:" + file.file_type + ";base64," + file.file_data;
 
     const newWindow = window.open();
     if (!newWindow) {
@@ -1141,21 +1175,21 @@ async function viewSubmission(taskId, studentId) {
       return;
     }
 
-    if (file.file_type.startsWith("image/")) {
-      newWindow.document.write(`
-        <title>${file.file_name}</title>
-        <body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh;">
-          <img src="${dataUrl}" style="max-width:100%;max-height:100%;">
-        </body>
-      `);
+    if (file.file_type.indexOf("image/") === 0) {
+      newWindow.document.write(
+        "<title>" + file.file_name + "</title>" +
+        '<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh;">' +
+          '<img src="' + dataUrl + '" style="max-width:100%;max-height:100%;">' +
+        "</body>"
+      );
     } else {
-      newWindow.document.write(`
-        <title>${file.file_name}</title>
-        <body style="font-family:sans-serif;padding:40px;">
-          <p>Archivo entregado: <strong>${file.file_name}</strong></p>
-          <a href="${dataUrl}" download="${file.file_name}">⬇️ Descargar archivo</a>
-        </body>
-      `);
+      newWindow.document.write(
+        "<title>" + file.file_name + "</title>" +
+        '<body style="font-family:sans-serif;padding:40px;">' +
+          "<p>Archivo entregado: <strong>" + file.file_name + "</strong></p>" +
+          '<a href="' + dataUrl + '" download="' + file.file_name + '">⬇️ Descargar archivo</a>' +
+        "</body>"
+      );
     }
 
   } catch (error) {
@@ -1170,7 +1204,7 @@ window.viewSubmission = viewSubmission;
 
 async function loadStudentDashboard() {
   const welcome = document.getElementById("student-welcome");
-  if (welcome) welcome.textContent = `Hola, ${currentUser.name}.`;
+  if (welcome) welcome.textContent = "Hola, " + currentUser.name + ".";
 
   await loadStudentClasses();
   await loadStudentPlan();
@@ -1185,7 +1219,7 @@ function startAutoRefresh() {
     clearInterval(planRefreshInterval);
   }
 
-  planRefreshInterval = setInterval(() => {
+  planRefreshInterval = setInterval(function () {
     if (currentUser && selectedRole === "student") {
       loadStudentPlan();
     }
@@ -1193,7 +1227,7 @@ function startAutoRefresh() {
 }
 
 async function loadStudentClasses() {
-  const classes = await api(`/api/students/${currentUser.id}/classes`);
+  const classes = await api("/api/students/" + currentUser.id + "/classes");
   studentClassesCache = classes;
 
   const container = document.getElementById("student-classes");
@@ -1202,7 +1236,7 @@ async function loadStudentClasses() {
   const metricClasses = document.getElementById("metric-student-classes");
   if (metricClasses) metricClasses.textContent = classes.length;
 
-  const renderCards = (target) => {
+  function renderCards(target) {
     if (!target) return;
     target.innerHTML = "";
 
@@ -1211,18 +1245,19 @@ async function loadStudentClasses() {
       return;
     }
 
-    classes.forEach(classItem => {
+    classes.forEach(function (classItem) {
       const card = document.createElement("div");
       card.className = "class-card";
       card.style.cursor = "pointer";
-      card.addEventListener("click", () => openClassDetail(classItem.id));
-      card.innerHTML = `
-        <h4>${classItem.course} ${classItem.group_name} — ${classItem.subject}</h4>
-        <p>Profesor: ${classItem.teacher_name} ${classItem.teacher_surname}</p>
-      `;
+      card.addEventListener("click", function () {
+        openClassDetail(classItem.id);
+      });
+      card.innerHTML =
+        "<h4>" + classItem.course + " " + classItem.group_name + " — " + classItem.subject + "</h4>" +
+        "<p>Profesor: " + classItem.teacher_name + " " + classItem.teacher_surname + "</p>";
       target.appendChild(card);
     });
-  };
+  }
 
   renderCards(container);
   renderCards(homeContainer);
@@ -1232,7 +1267,9 @@ async function handleJoinClass(event) {
   event.preventDefault();
   const submitButton = lockButton(event.target);
 
-  const code = document.getElementById("join-code")?.value.trim().toUpperCase();
+  const codeEl = document.getElementById("join-code");
+  const code = codeEl ? codeEl.value.trim().toUpperCase() : "";
+
   if (!code) {
     showToast("Introduce el código de la clase.", "error");
     unlockButton(submitButton);
@@ -1242,12 +1279,13 @@ async function handleJoinClass(event) {
   try {
     await api("/api/classes/join", {
       method: "POST",
-      body: JSON.stringify({ student_id: currentUser.id, code })
+      body: JSON.stringify({ student_id: currentUser.id, code: code })
     });
 
     showToast("Te has unido a la clase correctamente.", "success");
     event.target.reset();
-    document.getElementById("modal-join-class")?.close();
+    const modal = document.getElementById("modal-join-class");
+    if (modal) modal.close();
 
     await loadStudentDashboard();
 
@@ -1259,7 +1297,7 @@ async function handleJoinClass(event) {
 }
 
 // ============================================================
-// VISTA DE DETALLE DE UNA CLASE (alumno)   <-- NUEVO
+// VISTA DE DETALLE DE UNA CLASE (alumno)
 // ============================================================
 
 async function openClassDetail(classId) {
@@ -1277,18 +1315,20 @@ async function openClassDetail(classId) {
   if (activitiesEl) activitiesEl.innerHTML = "<p>Cargando...</p>";
 
   try {
-    const roster = await api(`/api/classes/${classId}/roster`);
-    const view = await api(`/api/classes/${classId}/student-view?student_id=${currentUser.id}`);
+    const roster = await api("/api/classes/" + classId + "/roster");
+    const view = await api("/api/classes/" + classId + "/student-view?student_id=" + currentUser.id);
 
-    if (titleEl) titleEl.textContent = `${roster.class.course} ${roster.class.group_name} — ${roster.class.subject}`;
-    if (teacherEl) teacherEl.textContent = `Profesor: ${roster.teacher.name} ${roster.teacher.surname}`;
+    if (titleEl) titleEl.textContent = roster.class.course + " " + roster.class.group_name + " — " + roster.class.subject;
+    if (teacherEl) teacherEl.textContent = "Profesor: " + roster.teacher.name + " " + roster.teacher.surname;
 
     if (rosterEl) {
-      const others = roster.students.filter(s => s.id !== currentUser.id);
+      const others = roster.students.filter(function (s) { return s.id !== currentUser.id; });
       if (others.length === 0) {
         rosterEl.innerHTML = "<p>Todavía no hay más alumnos en esta clase.</p>";
       } else {
-        rosterEl.innerHTML = others.map(s => `<div class="progress-row">👤 ${s.name} ${s.surname}</div>`).join("");
+        rosterEl.innerHTML = others.map(function (s) {
+          return '<div class="progress-row">👤 ' + s.name + " " + s.surname + "</div>";
+        }).join("");
       }
     }
 
@@ -1305,11 +1345,31 @@ function renderClassDetailActivities(container, view) {
 
   const items = [];
 
-  view.tasks.forEach(task => items.push({ ...task, type: "task" }));
-  view.exams.forEach(exam => items.push({ ...exam, type: "exam", due_date: exam.exam_date }));
-  view.projects.forEach(project => items.push({ ...project, type: "project" }));
+  view.tasks.forEach(function (task) {
+    const copy = {};
+    for (const k in task) copy[k] = task[k];
+    copy.type = "task";
+    items.push(copy);
+  });
 
-  items.sort((a, b) => (a.due_date > b.due_date ? 1 : -1));
+  view.exams.forEach(function (exam) {
+    const copy = {};
+    for (const k in exam) copy[k] = exam[k];
+    copy.type = "exam";
+    copy.due_date = exam.exam_date;
+    items.push(copy);
+  });
+
+  view.projects.forEach(function (project) {
+    const copy = {};
+    for (const k in project) copy[k] = project[k];
+    copy.type = "project";
+    items.push(copy);
+  });
+
+  items.sort(function (a, b) {
+    return a.due_date > b.due_date ? 1 : -1;
+  });
 
   if (items.length === 0) {
     container.innerHTML = "<p>Esta clase todavía no tiene actividades.</p>";
@@ -1318,7 +1378,7 @@ function renderClassDetailActivities(container, view) {
 
   container.innerHTML = "";
 
-  items.forEach(item => {
+  items.forEach(function (item) {
     const element = document.createElement("div");
     element.className = "plan-item";
 
@@ -1326,30 +1386,28 @@ function renderClassDetailActivities(container, view) {
     if (item.type === "exam") typeLabel = "EXAMEN";
     else if (item.type === "project") typeLabel = "PROYECTO";
 
-    const categoryLabel = item.category_name ? `${item.category_name} · ` : "";
+    const categoryLabel = item.category_name ? (item.category_name + " · ") : "";
 
     let actionsHtml = "";
     if (item.type === "task") {
       const doneLabel = item.completed ? "✅ Hecha" : "✅ Marcar como hecha";
-      actionsHtml = `
-        <button type="button" class="secondary-btn" ${item.completed ? "disabled" : ""} onclick="markTaskCompleteInDetail(${item.id})">${doneLabel}</button>
-        <button type="button" class="secondary-btn" onclick="triggerFileSubmit(${item.id})">${item.has_submission ? "📎 Archivo entregado (cambiar)" : "📎 Entregar archivo"}</button>
-        <input type="file" id="submit-file-input-${item.id}" class="hidden" onchange="handleFileSubmit(${item.id}, this)">
-      `;
+      actionsHtml =
+        '<button type="button" class="secondary-btn" ' + (item.completed ? "disabled" : "") + ' onclick="markTaskCompleteInDetail(' + item.id + ')">' + doneLabel + "</button>" +
+        '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">' + (item.has_submission ? "📎 Archivo entregado (cambiar)" : "📎 Entregar archivo") + "</button>" +
+        '<input type="file" id="submit-file-input-' + item.id + '" class="hidden" onchange="handleFileSubmit(' + item.id + ', this)">';
     }
 
-    element.innerHTML = `
-      <div class="plan-title">${typeLabel} · ${item.title}</div>
-      <div class="plan-meta">${categoryLabel}Fecha: ${item.due_date}</div>
-      ${actionsHtml}
-    `;
+    element.innerHTML =
+      '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
+      '<div class="plan-meta">' + categoryLabel + "Fecha: " + item.due_date + "</div>" +
+      actionsHtml;
     container.appendChild(element);
   });
 }
 
 async function markTaskCompleteInDetail(taskId) {
   try {
-    await api(`/api/tasks/${taskId}/complete`, {
+    await api("/api/tasks/" + taskId + "/complete", {
       method: "POST",
       body: JSON.stringify({ student_id: currentUser.id })
     });
@@ -1363,7 +1421,7 @@ window.markTaskCompleteInDetail = markTaskCompleteInDetail;
 
 async function markTaskComplete(taskId) {
   try {
-    await api(`/api/tasks/${taskId}/complete`, {
+    await api("/api/tasks/" + taskId + "/complete", {
       method: "POST",
       body: JSON.stringify({ student_id: currentUser.id })
     });
@@ -1379,7 +1437,7 @@ window.markTaskComplete = markTaskComplete;
 // ============================================================
 
 function triggerFileSubmit(taskId) {
-  const input = document.getElementById(`submit-file-input-${taskId}`);
+  const input = document.getElementById("submit-file-input-" + taskId);
   if (input) input.click();
 }
 window.triggerFileSubmit = triggerFileSubmit;
@@ -1396,11 +1454,11 @@ async function handleFileSubmit(taskId, input) {
 
   const reader = new FileReader();
 
-  reader.onload = async () => {
+  reader.onload = async function () {
     const base64 = reader.result.split(",")[1];
 
     try {
-      await api(`/api/tasks/${taskId}/submit`, {
+      await api("/api/tasks/" + taskId + "/submit", {
         method: "POST",
         body: JSON.stringify({
           student_id: currentUser.id,
@@ -1423,7 +1481,7 @@ async function handleFileSubmit(taskId, input) {
     }
   };
 
-  reader.onerror = () => {
+  reader.onerror = function () {
     showToast("No se pudo leer el archivo.", "error");
   };
 
@@ -1437,19 +1495,18 @@ async function loadStudentPlan() {
   if (container) container.innerHTML = "<p>KAIRO está pensando...</p>";
 
   try {
-    const result = await api(`/api/students/${currentUser.id}/plan`);
+    const result = await api("/api/students/" + currentUser.id + "/plan");
     studentPlanCache = result.plan || [];
 
     updateStudentMetrics(studentPlanCache);
 
-    const emptyHtml = `
-      <div class="plan-item">
-        <div class="plan-title">No hay nada que organizar.</div>
-        <div class="plan-meta">Cuando tus profesores introduzcan tareas, exámenes o proyectos, KAIRO construirá tu plan.</div>
-      </div>
-    `;
+    const emptyHtml =
+      '<div class="plan-item">' +
+        '<div class="plan-title">No hay nada que organizar.</div>' +
+        '<div class="plan-meta">Cuando tus profesores introduzcan tareas, exámenes o proyectos, KAIRO construirá tu plan.</div>' +
+      "</div>";
 
-    const renderList = (target, items) => {
+    function renderList(target, items) {
       if (!target) return;
       target.innerHTML = "";
 
@@ -1458,9 +1515,9 @@ async function loadStudentPlan() {
         return;
       }
 
-      items.forEach(item => {
+      items.forEach(function (item) {
         const element = document.createElement("div");
-        element.className = `plan-item priority-${(item.priority || "media").toLowerCase()}`;
+        element.className = "plan-item priority-" + (item.priority || "media").toLowerCase();
 
         const label = item.mandatory ? "🔴 OBLIGATORIO" : "🟢 RECOMENDADO";
 
@@ -1469,53 +1526,51 @@ async function loadStudentPlan() {
         else if (item.type === "project") typeLabel = "PROYECTO";
 
         const doneButton = item.type === "task"
-          ? `<button type="button" class="secondary-btn" onclick="markTaskComplete(${item.id})">✅ Marcar como hecha</button>`
+          ? '<button type="button" class="secondary-btn" onclick="markTaskComplete(' + item.id + ')">✅ Marcar como hecha</button>'
           : "";
 
         const submitButtonHtml = item.type === "task"
-          ? `<button type="button" class="secondary-btn" onclick="triggerFileSubmit(${item.id})">📎 Entregar archivo</button>
-             <input type="file" id="submit-file-input-${item.id}" class="hidden" onchange="handleFileSubmit(${item.id}, this)">`
+          ? '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">📎 Entregar archivo</button>' +
+            '<input type="file" id="submit-file-input-' + item.id + '" class="hidden" onchange="handleFileSubmit(' + item.id + ', this)">'
           : "";
 
-        element.innerHTML = `
-          <div class="plan-title">${label} · ${typeLabel}<br>${item.title}</div>
-          <div class="plan-meta">${item.subject} · ${formatDays(item.days_left)} · Importancia: ${item.priority}</div>
-          ${doneButton}
-          ${submitButtonHtml}
-        `;
+        element.innerHTML =
+          '<div class="plan-title">' + label + " · " + typeLabel + "<br>" + item.title + "</div>" +
+          '<div class="plan-meta">' + item.subject + " · " + formatDays(item.days_left) + " · Importancia: " + item.priority + "</div>" +
+          doneButton +
+          submitButtonHtml;
         target.appendChild(element);
       });
-    };
+    }
 
     renderList(container, studentPlanCache);
 
   } catch (error) {
     console.error("Error generando el plan:", error);
     if (container) {
-      container.innerHTML = `
-        <div class="plan-item">
-          <div class="plan-title">No se ha podido generar el plan de KAIRO.</div>
-          <div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>
-        </div>
-      `;
+      container.innerHTML =
+        '<div class="plan-item">' +
+          '<div class="plan-title">No se ha podido generar el plan de KAIRO.</div>' +
+          '<div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>' +
+        "</div>";
     }
   }
 }
 
 function updateStudentMetrics(plan) {
-  const setMetric = (id, value) => {
+  function setMetric(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
-  };
+  }
   setMetric("metric-student-pending", plan.length);
-  setMetric("metric-student-exams", plan.filter(item => item.type === "exam_preparation").length);
+  setMetric("metric-student-exams", plan.filter(function (item) { return item.type === "exam_preparation"; }).length);
 }
 
 function formatDays(days) {
   if (days < 0) return "ATRASADO";
   if (days === 0) return "HOY";
   if (days === 1) return "MAÑANA";
-  return `En ${days} días`;
+  return "En " + days + " días";
 }
 
 // ============================================================
@@ -1529,7 +1584,7 @@ async function loadStudentGrades() {
   container.innerHTML = "<p>Cargando notas...</p>";
 
   try {
-    const classesGrades = await api(`/api/students/${currentUser.id}/grades`);
+    const classesGrades = await api("/api/students/" + currentUser.id + "/grades");
 
     if (classesGrades.length === 0) {
       container.innerHTML = "<p>Aún no perteneces a ninguna clase.</p>";
@@ -1538,7 +1593,7 @@ async function loadStudentGrades() {
 
     container.innerHTML = "";
 
-    classesGrades.forEach(classData => {
+    classesGrades.forEach(function (classData) {
       const card = document.createElement("div");
       card.className = "panel";
 
@@ -1551,55 +1606,50 @@ async function loadStudentGrades() {
 
       let categoriesHtml = "";
 
-      classData.categories.forEach(category => {
+      classData.categories.forEach(function (category) {
         const avgText = category.average !== null
           ? category.average.toFixed(2)
           : "Sin notas todavía";
 
         let activitiesHtml = "";
 
-        category.activities.forEach(activity => {
+        category.activities.forEach(function (activity) {
           const gradeText = activity.grade !== null ? activity.grade : "—";
           let typeLabel = "Tarea";
           if (activity.type === "exam") typeLabel = "Examen";
           else if (activity.type === "project") typeLabel = "Proyecto";
 
-          activitiesHtml += `
-            <div class="progress-row">
-              ${typeLabel} · ${activity.title}: <strong>&nbsp;${gradeText}</strong>
-            </div>
-          `;
+          activitiesHtml +=
+            '<div class="progress-row">' +
+              typeLabel + " · " + activity.title + ": <strong>&nbsp;" + gradeText + "</strong>" +
+            "</div>";
         });
 
         if (activitiesHtml === "") {
-          activitiesHtml = `<div class="progress-row">Todavía no hay actividades en esta categoría.</div>`;
+          activitiesHtml = '<div class="progress-row">Todavía no hay actividades en esta categoría.</div>';
         }
 
-        categoriesHtml += `
-          <div class="plan-item">
-            <div class="plan-title">${category.name} (${category.percentage}%)</div>
-            <div class="plan-meta">Media de esta categoría: ${avgText}</div>
-            ${activitiesHtml}
-          </div>
-        `;
+        categoriesHtml +=
+          '<div class="plan-item">' +
+            '<div class="plan-title">' + category.name + " (" + category.percentage + "%)</div>" +
+            '<div class="plan-meta">Media de esta categoría: ' + avgText + "</div>" +
+            activitiesHtml +
+          "</div>";
       });
 
-      card.innerHTML = `
-        <h2>${classData.course} ${classData.group_name} — ${classData.subject}</h2>
-
-        <div class="grade-summary-grid">
-          <div class="metric-card">
-            <div class="metric-value">${currentText}</div>
-            <div class="metric-label">Nota media actual</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-value">${projectedText}</div>
-            <div class="metric-label">Proyección si sigues así</div>
-          </div>
-        </div>
-
-        ${categoriesHtml}
-      `;
+      card.innerHTML =
+        "<h2>" + classData.course + " " + classData.group_name + " — " + classData.subject + "</h2>" +
+        '<div class="grade-summary-grid">' +
+          '<div class="metric-card">' +
+            '<div class="metric-value">' + currentText + "</div>" +
+            '<div class="metric-label">Nota media actual</div>' +
+          "</div>" +
+          '<div class="metric-card">' +
+            '<div class="metric-value">' + projectedText + "</div>" +
+            '<div class="metric-label">Proyección si sigues así</div>' +
+          "</div>" +
+        "</div>" +
+        categoriesHtml;
 
       container.appendChild(card);
     });
