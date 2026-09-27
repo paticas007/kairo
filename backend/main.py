@@ -107,10 +107,6 @@ def calculate_priority_score(category_weight: float, hours_left: float) -> float
 
 
 def priority_label(hours_left: float) -> str:
-    """
-    'retrasado' es el nivel más urgente de todos — por encima
-    de 'alta' — porque ya ha pasado la fecha límite.
-    """
     if hours_left <= 0:
         return "retrasado"
     elif hours_left < VENTANA_CRITICA_HORAS:
@@ -139,12 +135,6 @@ def prioritize_activities(activities: list[dict]) -> list[dict]:
 
 
 def compute_weighted_average(category_data: list[dict]):
-    """
-    Recibe una lista de categorías, cada una con su 'average'
-    (o None si aún no tiene notas) y su 'percentage'.
-    Devuelve la media ponderada solo con las categorías que
-    ya tienen alguna nota. Si no hay ninguna nota, devuelve None.
-    """
     graded_categories = [c for c in category_data if c["average"] is not None]
     weight_sum = sum(c["percentage"] for c in graded_categories)
 
@@ -1005,6 +995,44 @@ def get_submission_file(task_id: int, student_id: int):
 
 
 # ============================================================
+# ACTIVIDADES POR CORREGIR (profesor)   <-- NUEVO
+# ============================================================
+
+@app.get("/api/teachers/{teacher_id}/pending-corrections")
+def get_pending_corrections(teacher_id: int):
+
+    connection = get_connection()
+
+    rows = connection.execute(
+        """
+        SELECT
+            tasks.id AS task_id,
+            tasks.title,
+            classes.course, classes.group_name, classes.subject,
+            students.id AS student_id, students.name, students.surname,
+            task_submissions.submitted_at
+        FROM task_submissions
+        INNER JOIN tasks ON task_submissions.task_id = tasks.id
+        INNER JOIN classes ON tasks.class_id = classes.id
+        INNER JOIN students ON task_submissions.student_id = students.id
+        WHERE classes.teacher_id = ?
+        AND NOT EXISTS (
+            SELECT 1 FROM grades
+            WHERE grades.activity_type = 'task'
+            AND grades.activity_id = tasks.id
+            AND grades.student_id = task_submissions.student_id
+        )
+        ORDER BY task_submissions.submitted_at ASC
+        """,
+        (teacher_id,)
+    ).fetchall()
+
+    connection.close()
+
+    return [dict(row) for row in rows]
+
+
+# ============================================================
 # NOTAS
 # ============================================================
 
@@ -1054,6 +1082,8 @@ def get_gradebook(class_id: int):
         (class_id,)
     ).fetchall()
 
+    category_lookup = {c["id"]: dict(c) for c in categories}
+
     students = connection.execute(
         """
         SELECT s.id, s.name, s.surname
@@ -1084,6 +1114,12 @@ def get_gradebook(class_id: int):
     activities.extend({"type": "task", **dict(t)} for t in tasks)
     activities.extend({"type": "exam", **dict(e)} for e in exams)
     activities.extend({"type": "project", **dict(p)} for p in projects)
+
+    # Añadimos el % de la categoría a cada actividad   <-- NUEVO
+    for activity in activities:
+        category = category_lookup.get(activity.get("category_id"))
+        activity["category_name"] = category["name"] if category else None
+        activity["category_percentage"] = category["percentage"] if category else None
 
     grades_map = {}
 
@@ -1140,7 +1176,6 @@ def get_gradebook(class_id: int):
             if grade_value is not None and category_id in category_grades:
                 category_grades[category_id].append(grade_value)
 
-        # Media ponderada del alumno en esta clase   <-- NUEVO
         category_data = []
         for category in categories:
             values = category_grades[category["id"]]
@@ -1401,7 +1436,7 @@ def get_teacher_activities(teacher_id: int):
         """
         SELECT 'task' AS type, tasks.id, tasks.title, tasks.description,
                tasks.due_date AS activity_date, tasks.priority, tasks.mandatory,
-               classes.course, classes.group_name, classes.subject,
+               classes.id AS class_id, classes.course, classes.group_name, classes.subject,
                evaluation_categories.name AS category_name
         FROM tasks
         INNER JOIN classes ON tasks.class_id = classes.id
@@ -1415,7 +1450,7 @@ def get_teacher_activities(teacher_id: int):
         """
         SELECT 'exam' AS type, exams.id, exams.title, exams.description,
                exams.exam_date AS activity_date, exams.importance AS priority, 1 AS mandatory,
-               classes.course, classes.group_name, classes.subject,
+               classes.id AS class_id, classes.course, classes.group_name, classes.subject,
                evaluation_categories.name AS category_name
         FROM exams
         INNER JOIN classes ON exams.class_id = classes.id
@@ -1429,7 +1464,7 @@ def get_teacher_activities(teacher_id: int):
         """
         SELECT 'project' AS type, projects.id, projects.title, projects.description,
                projects.due_date AS activity_date, projects.priority, 1 AS mandatory,
-               classes.course, classes.group_name, classes.subject,
+               classes.id AS class_id, classes.course, classes.group_name, classes.subject,
                evaluation_categories.name AS category_name
         FROM projects
         INNER JOIN classes ON projects.class_id = classes.id
@@ -1496,9 +1531,6 @@ def get_student_plan(student_id: int):
             if weight is None:
                 weight = DEFAULT_CATEGORY_WEIGHT
 
-            # Si la tarea es para hoy o mañana, se vuelve
-            # obligatoria automáticamente, aunque el profesor
-            # la marcara como opcional.   <-- NUEVO
             effective_mandatory = bool(task["mandatory"]) or hours_left <= 24
 
             raw_activities.append({
@@ -1509,6 +1541,11 @@ def get_student_plan(student_id: int):
                 "priority": priority_label(hours_left),
                 "mandatory": effective_mandatory
             })
+
+        # --------------------------------------------------------
+        # EXÁMENES: no se quedan "retrasados" para siempre. Una
+        # vez pasa el día del examen, desaparecen del plan.
+        # --------------------------------------------------------
 
         exams = connection.execute(
             """
@@ -1522,6 +1559,9 @@ def get_student_plan(student_id: int):
 
         for exam in exams:
             hours_left = calculate_hours_left(exam["exam_date"])
+
+            if hours_left < 0:
+                continue
             if hours_left > MAX_PLAN_WINDOW_HOURS:
                 continue
 
