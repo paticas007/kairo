@@ -49,7 +49,7 @@ function initializeKairo() {
   if (gradebookSelect) gradebookSelect.addEventListener("change", handleGradebookClassChange);
 
   const addCategoryBtn = document.getElementById("add-category-btn");
-  if (addCategoryBtn) addCategoryBtn.addEventListener("click", () => addCategoryRow());
+  if (addCategoryBtn) addCategoryBtn.addEventListener("click", function () { addCategoryRow(); });
 
   const activityClassSelect = document.getElementById("activity-class");
   if (activityClassSelect) activityClassSelect.addEventListener("change", handleActivityClassChange);
@@ -66,8 +66,8 @@ function initializeKairo() {
   const adminResetBtn = document.getElementById("admin-reset-btn");
   if (adminResetBtn) adminResetBtn.addEventListener("click", handleAdminResetDatabase);
 
-  document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
-    btn.addEventListener("click", () => {
+  document.querySelectorAll(".nav-item[data-view]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
       const shell = btn.closest(".shell");
       const role = shell && shell.id === "teacher-shell" ? "teacher" : "student";
       setActiveView(role, btn.dataset.view);
@@ -688,6 +688,7 @@ async function loadTeacherDashboard() {
 
   renderTeacherClasses();
   updateClassSelectors();
+  await loadPendingCorrections();
   await loadTeacherActivities();
 }
 
@@ -925,9 +926,45 @@ async function handleCreateActivity(event) {
   }
 }
 
+// ============================================================
+// ACTIVIDADES POR CORREGIR (dashboard profesor)   <-- NUEVO
+// ============================================================
+
+async function loadPendingCorrections() {
+  const container = document.getElementById("teacher-activities-dashboard");
+  if (!container) return;
+
+  container.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const pending = await api("/api/teachers/" + currentUser.id + "/pending-corrections");
+
+    if (pending.length === 0) {
+      container.innerHTML = "<p>No tienes ninguna entrega pendiente de corregir. 🎉</p>";
+      return;
+    }
+
+    container.innerHTML = "";
+
+    pending.forEach(function (item) {
+      const element = document.createElement("div");
+      element.className = "plan-item";
+      element.innerHTML =
+        '<div class="plan-title">📝 ' + item.title + "</div>" +
+        '<div class="plan-meta">' + item.course + " " + item.group_name + " · " + item.subject +
+          " · Entregado por " + item.name + " " + item.surname + "</div>" +
+        '<button type="button" class="secondary-btn" onclick="viewSubmission(' + item.task_id + ", " + item.student_id + ')">📎 Ver entrega</button>';
+      container.appendChild(element);
+    });
+
+  } catch (error) {
+    console.error("Error cargando correcciones pendientes:", error);
+    container.innerHTML = "<p>No se pudieron cargar las correcciones pendientes.</p>";
+  }
+}
+
 async function loadTeacherActivities() {
   const container = document.getElementById("teacher-activities");
-  const dashboardContainer = document.getElementById("teacher-activities-dashboard");
 
   try {
     const activities = await api("/api/teachers/" + currentUser.id + "/activities");
@@ -935,14 +972,34 @@ async function loadTeacherActivities() {
 
     updateTeacherMetrics(activities);
 
-    function render(target, list, emptyText) {
-      if (!target) return;
-      target.innerHTML = "";
-      if (list.length === 0) {
-        target.innerHTML = "<p>" + emptyText + "</p>";
-        return;
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (activities.length === 0) {
+      container.innerHTML = "<p>Aún no has creado actividades.</p>";
+      return;
+    }
+
+    // Agrupamos por clase (curso + grupo + asignatura)   <-- NUEVO
+    const groups = {};
+    const groupOrder = [];
+
+    activities.forEach(function (activity) {
+      const key = activity.course + " " + activity.group_name + " — " + activity.subject;
+      if (!groups[key]) {
+        groups[key] = [];
+        groupOrder.push(key);
       }
-      list.forEach(function (activity) {
+      groups[key].push(activity);
+    });
+
+    groupOrder.forEach(function (key) {
+      const header = document.createElement("div");
+      header.className = "class-group-header";
+      header.textContent = key;
+      container.appendChild(header);
+
+      groups[key].forEach(function (activity) {
         const element = document.createElement("div");
         element.className = "plan-item priority-" + (activity.priority || "media").toLowerCase();
 
@@ -954,14 +1011,11 @@ async function loadTeacherActivities() {
 
         element.innerHTML =
           '<div class="plan-title">' + typeLabel + " · " + activity.title + "</div>" +
-          '<div class="plan-meta">' + activity.course + " " + activity.group_name + " · " + activity.subject + categoryLabel + " · " + activity.activity_date + "</div>" +
+          '<div class="plan-meta">' + activity.activity_date + categoryLabel + "</div>" +
           '<button type="button" class="secondary-btn danger-btn" onclick="deleteActivity(\'' + activity.type + "', " + activity.id + ')">🗑️ Eliminar</button>';
-        target.appendChild(element);
+        container.appendChild(element);
       });
-    }
-
-    render(container, activities, "Aún no has creado actividades.");
-    render(dashboardContainer, activities.slice(0, 5), "Aún no has creado actividades.");
+    });
 
   } catch (error) {
     console.error("Error cargando actividades:", error);
@@ -1098,7 +1152,10 @@ function renderGradebook(container, classId, data) {
 
   data.activities.forEach(function (activity) {
     const icon = activity.type === "task" ? "📝" : (activity.type === "exam" ? "📚" : "🗂️");
-    html += "<th>" + icon + " " + activity.title + "</th>";
+    const percentageLabel = (activity.category_percentage !== null && activity.category_percentage !== undefined)
+      ? ("<small>" + activity.category_percentage + "%</small>")
+      : "<small>—</small>";
+    html += "<th>" + icon + " " + activity.title + percentageLabel + "</th>";
   });
 
   html += "<th>Media</th></tr></thead><tbody>";
@@ -1574,7 +1631,7 @@ function formatDays(days) {
 }
 
 // ============================================================
-// NOTAS DEL ALUMNO
+// NOTAS DEL ALUMNO (ahora desplegable al pulsar)
 // ============================================================
 
 async function loadStudentGrades() {
@@ -1630,11 +1687,10 @@ async function loadStudentGrades() {
         }
 
         categoriesHtml +=
-          '<div class="plan-item">' +
-            '<div class="plan-title">' + category.name + " (" + category.percentage + "%)</div>" +
-            '<div class="plan-meta">Media de esta categoría: ' + avgText + "</div>" +
-            activitiesHtml +
-          "</div>";
+          '<details class="grades-details plan-item">' +
+            "<summary>" + category.name + " (" + category.percentage + "%) — Media: " + avgText + "</summary>" +
+            '<div style="margin-top: 10px;">' + activitiesHtml + "</div>" +
+          "</details>";
       });
 
       card.innerHTML =
