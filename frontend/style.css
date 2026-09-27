@@ -382,6 +382,10 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 .plan-item.priority-alta, .plan-item.priority-high { border-left-color: var(--danger); }
 .plan-item.priority-media, .plan-item.priority-medium { border-left-color: var(--warning); }
 .plan-item.priority-baja, .plan-item.priority-low { border-left-color: var(--success); }
+.plan-item.priority-retrasado {
+  border-left-color: var(--danger);
+  background: rgba(239, 68, 68, 0.06);
+}
 
 .plan-item .secondary-btn { margin-top: 12px; margin-right: 8px; }
 
@@ -405,6 +409,37 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 
 .category-row input {
   margin-bottom: 0;
+}
+
+.class-group-header {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin: 22px 0 10px;
+}
+.class-group-header:first-child {
+  margin-top: 0;
+}
+
+.grades-details summary {
+  cursor: pointer;
+  padding: 6px 0;
+  color: var(--text);
+  font-weight: 700;
+  list-style: none;
+}
+.grades-details summary::-webkit-details-marker {
+  display: none;
+}
+.grades-details summary::before {
+  content: "▶ ";
+  color: var(--accent);
+  font-size: 11px;
+}
+.grades-details[open] summary::before {
+  content: "▼ ";
 }
 
 #toast-container {
@@ -479,10 +514,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   gap: 10px;
 }
 
-/* ============================================================
-   TABLA DE NOTAS (gradebook)   <-- NUEVO
-============================================================ */
-
 .gradebook-scroll {
   overflow-x: auto;
 }
@@ -506,6 +537,12 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   background: var(--bg-input);
   color: var(--text-muted);
   font-weight: 700;
+}
+
+.gradebook-table th small {
+  display: block;
+  color: var(--accent);
+  font-weight: 400;
 }
 
 .gradebook-table th:first-child,
@@ -536,16 +573,16 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   vertical-align: middle;
 }
 
-/* ============================================================
-   NOTAS DEL ALUMNO   <-- NUEVO
-============================================================ */
-
 .grade-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
   margin-bottom: 20px;
 }
+
+/* ============================================================
+   MÓVIL: BARRA INFERIOR MÁS GRANDE (estilo apps famosas)
+============================================================ */
 
 @media (max-width: 900px) {
   .app-shell {
@@ -561,12 +598,13 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
     flex-direction: row;
     justify-content: space-around;
     align-items: center;
-    padding: 8px 4px;
+    padding: 10px 6px calc(10px + env(safe-area-inset-bottom, 0px));
     border-right: none;
     border-top: 1px solid var(--border);
     background: var(--bg-elevated);
     z-index: 100;
     gap: 0;
+    min-height: 68px;
   }
 
   .sidebar-logo,
@@ -580,11 +618,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 
   .nav-item {
     flex-direction: column;
-    gap: 2px;
-    font-size: 10px;
-    padding: 6px 4px;
+    gap: 4px;
+    font-size: 11px;
+    padding: 8px 4px;
     border-left: none;
-    border-radius: 10px;
+    border-radius: 12px;
     flex: 1;
     text-align: center;
     white-space: nowrap;
@@ -600,7 +638,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   }
 
   .main-content {
-    padding-bottom: 90px;
+    padding-bottom: 110px;
   }
 
   .metrics-grid {
@@ -640,12 +678,4 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   .view-header button {
     width: 100%;
   }
-}
-/* ============================================================
-   RETRASADO (más urgente que "alta")   <-- NUEVO
-============================================================ */
-
-.plan-item.priority-retrasado {
-  border-left-color: var(--danger);
-  background: rgba(239, 68, 68, 0.06);
 }
