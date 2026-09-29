@@ -12,6 +12,7 @@ let studentClassesCache = [];
 let categoryRowCounter = 0;
 let adminSecret = null;
 let currentClassDetailId = null;
+let currentTeacherActivitiesClassId = null;
 
 const MAX_FILE_BYTES = 4.3 * 1024 * 1024;
 
@@ -687,6 +688,7 @@ async function loadTeacherDashboard() {
   teacherClasses = await api("/api/teachers/" + currentUser.id + "/classes");
 
   renderTeacherClasses();
+  renderTeacherActivitiesClassPicker();
   updateClassSelectors();
   await loadPendingCorrections();
   await loadTeacherActivities();
@@ -723,13 +725,32 @@ function renderTeacherClasses() {
   render(dashboardContainer);
 }
 
-function focusClassInTasks(classId) {
-  setActiveView("teacher", "tasks");
-  const select = document.getElementById("activity-class");
-  if (select) {
-    select.value = String(classId);
-    handleActivityClassChange({ target: select });
+function renderTeacherActivitiesClassPicker() {
+  const container = document.getElementById("teacher-activities-class-picker");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (teacherClasses.length === 0) {
+    container.innerHTML = "<p>Aún no tienes clases.</p>";
+    return;
   }
+
+  teacherClasses.forEach(function (classItem) {
+    const card = document.createElement("div");
+    card.className = "class-card";
+    card.style.cursor = "pointer";
+    card.addEventListener("click", function () {
+      openTeacherClassActivities(classItem.id);
+    });
+    card.innerHTML =
+      "<h4>" + classItem.course + " " + classItem.group_name + " — " + classItem.subject + "</h4>" +
+      '<span class="class-code">Código: ' + classItem.code + "</span>";
+    container.appendChild(card);
+  });
+}
+
+function focusClassInTasks(classId) {
+  openTeacherClassActivities(classId);
 }
 window.focusClassInTasks = focusClassInTasks;
 
@@ -866,6 +887,7 @@ async function handleCreateActivity(event) {
   const titleEl = document.getElementById("activity-title");
   const descriptionEl = document.getElementById("activity-description");
   const dateEl = document.getElementById("activity-date");
+  const publishDateEl = document.getElementById("activity-publish-date");
   const priorityEl = document.getElementById("activity-priority");
   const mandatoryEl = document.getElementById("activity-mandatory");
 
@@ -873,6 +895,7 @@ async function handleCreateActivity(event) {
   const title = titleEl ? titleEl.value.trim() : "";
   const description = descriptionEl ? descriptionEl.value.trim() : "";
   const date = dateEl ? dateEl.value : "";
+  const publishDate = (publishDateEl && publishDateEl.value) ? publishDateEl.value : null;
   const priority = priorityEl ? priorityEl.value : "media";
   const mandatory = mandatoryEl ? mandatoryEl.checked : true;
 
@@ -894,30 +917,33 @@ async function handleCreateActivity(event) {
     if (type === "task") {
       await api("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, due_date: date, priority: priority, mandatory: mandatory })
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, due_date: date, priority: priority, mandatory: mandatory, publish_date: publishDate })
       });
     } else if (type === "exam") {
       await api("/api/exams", {
         method: "POST",
-        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, exam_date: date, importance: priority })
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, exam_date: date, importance: priority, publish_date: publishDate })
       });
     } else if (type === "project") {
       await api("/api/projects", {
         method: "POST",
-        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, due_date: date, priority: priority })
+        body: JSON.stringify({ class_id: classId, category_id: categoryId, title: title, description: description, due_date: date, priority: priority, publish_date: publishDate })
       });
     } else {
       showToast("Selecciona el tipo de actividad.", "error");
       return;
     }
 
-    showToast("Actividad creada correctamente.", "success");
+    showToast("Actividad guardada correctamente.", "success");
     event.target.reset();
     toggleMandatoryVisibility("task");
     const modal = document.getElementById("modal-create-activity");
     if (modal) modal.close();
 
     await loadTeacherActivities();
+    if (currentTeacherActivitiesClassId) {
+      await openTeacherClassActivities(currentTeacherActivitiesClassId);
+    }
 
   } catch (error) {
     showToast(error.message, "error");
@@ -927,7 +953,7 @@ async function handleCreateActivity(event) {
 }
 
 // ============================================================
-// ACTIVIDADES POR CORREGIR (dashboard profesor)   <-- NUEVO
+// ACTIVIDADES POR CORREGIR (dashboard profesor)
 // ============================================================
 
 async function loadPendingCorrections() {
@@ -963,64 +989,109 @@ async function loadPendingCorrections() {
   }
 }
 
-async function loadTeacherActivities() {
-  const container = document.getElementById("teacher-activities");
+// ============================================================
+// MÉTRICAS DE ACTIVIDADES (Inicio)
+// ============================================================
 
+async function loadTeacherActivities() {
   try {
     const activities = await api("/api/teachers/" + currentUser.id + "/activities");
     teacherActivitiesCache = activities;
-
     updateTeacherMetrics(activities);
-
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (activities.length === 0) {
-      container.innerHTML = "<p>Aún no has creado actividades.</p>";
-      return;
-    }
-
-    // Agrupamos por clase (curso + grupo + asignatura)   <-- NUEVO
-    const groups = {};
-    const groupOrder = [];
-
-    activities.forEach(function (activity) {
-      const key = activity.course + " " + activity.group_name + " — " + activity.subject;
-      if (!groups[key]) {
-        groups[key] = [];
-        groupOrder.push(key);
-      }
-      groups[key].push(activity);
-    });
-
-    groupOrder.forEach(function (key) {
-      const header = document.createElement("div");
-      header.className = "class-group-header";
-      header.textContent = key;
-      container.appendChild(header);
-
-      groups[key].forEach(function (activity) {
-        const element = document.createElement("div");
-        element.className = "plan-item priority-" + (activity.priority || "media").toLowerCase();
-
-        let typeLabel = "TAREA";
-        if (activity.type === "exam") typeLabel = "EXAMEN";
-        else if (activity.type === "project") typeLabel = "PROYECTO";
-
-        const categoryLabel = activity.category_name ? (" · " + activity.category_name) : "";
-
-        element.innerHTML =
-          '<div class="plan-title">' + typeLabel + " · " + activity.title + "</div>" +
-          '<div class="plan-meta">' + activity.activity_date + categoryLabel + "</div>" +
-          '<button type="button" class="secondary-btn danger-btn" onclick="deleteActivity(\'' + activity.type + "', " + activity.id + ')">🗑️ Eliminar</button>';
-        container.appendChild(element);
-      });
-    });
-
   } catch (error) {
     console.error("Error cargando actividades:", error);
   }
 }
+
+function updateTeacherMetrics(activities) {
+  function setMetric(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  setMetric("metric-classes", teacherClasses.length);
+  setMetric("metric-tasks", activities.filter(function (a) { return a.type === "task"; }).length);
+  setMetric("metric-exams", activities.filter(function (a) { return a.type === "exam"; }).length);
+  setMetric("metric-projects", activities.filter(function (a) { return a.type === "project"; }).length);
+}
+
+// ============================================================
+// ACTIVIDADES DE UNA CLASE, POR ESTADO (profesor)
+// ============================================================
+
+async function openTeacherClassActivities(classId) {
+  currentTeacherActivitiesClassId = classId;
+  setActiveView("teacher", "class-activities");
+
+  const classItem = teacherClasses.find(function (c) { return c.id === classId; });
+  const titleEl = document.getElementById("teacher-class-activities-title");
+  if (titleEl && classItem) {
+    titleEl.textContent = classItem.course + " " + classItem.group_name + " — " + classItem.subject;
+  }
+
+  const completedEl = document.getElementById("teacher-tasks-completed");
+  const pendingEl = document.getElementById("teacher-tasks-pending");
+  const scheduledEl = document.getElementById("teacher-scheduled");
+  const examsProjectsEl = document.getElementById("teacher-exams-projects");
+
+  [completedEl, pendingEl, scheduledEl, examsProjectsEl].forEach(function (el) {
+    if (el) el.innerHTML = "<p>Cargando...</p>";
+  });
+
+  const activityClassSelect = document.getElementById("activity-class");
+  if (activityClassSelect) {
+    activityClassSelect.value = String(classId);
+    handleActivityClassChange({ target: activityClassSelect });
+  }
+
+  try {
+    const data = await api("/api/classes/" + classId + "/activities-status");
+
+    function renderActivity(item) {
+      let typeLabel = "TAREA";
+      if (item.type === "exam") typeLabel = "EXAMEN";
+      else if (item.type === "project") typeLabel = "PROYECTO";
+
+      const dateField = item.type === "exam" ? item.exam_date : item.due_date;
+      const categoryLabel = item.category_name ? (" · " + item.category_name) : "";
+
+      let extra = "";
+      if (item.type === "task" && item.total_students > 0) {
+        extra += '<div class="plan-meta">' + item.completed_count + " de " + item.total_students + " alumnos la han hecho</div>";
+      }
+      if (item.publish_date) {
+        extra += '<div class="plan-meta">🕓 Se publica el ' + item.publish_date + "</div>";
+      }
+
+      return (
+        '<div class="plan-item">' +
+          '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
+          '<div class="plan-meta">' + dateField + categoryLabel + "</div>" +
+          extra +
+          '<button type="button" class="secondary-btn danger-btn" onclick="deleteActivity(\'' + item.type + "', " + item.id + ')">🗑️ Eliminar</button>' +
+        "</div>"
+      );
+    }
+
+    function fill(target, list, emptyText) {
+      if (!target) return;
+      if (list.length === 0) {
+        target.innerHTML = "<p>" + emptyText + "</p>";
+        return;
+      }
+      target.innerHTML = list.map(renderActivity).join("");
+    }
+
+    fill(completedEl, data.tasks_completed, "Ninguna tarea completada por todos todavía.");
+    fill(pendingEl, data.tasks_pending, "No hay tareas pendientes.");
+    fill(scheduledEl, data.scheduled, "No hay nada programado.");
+    fill(examsProjectsEl, data.exams_projects, "Aún no hay exámenes ni proyectos.");
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.openTeacherClassActivities = openTeacherClassActivities;
 
 async function deleteActivity(type, id) {
   const confirmed = await showConfirm("¿Seguro que quieres eliminar esta actividad? Esta acción no se puede deshacer.");
@@ -1035,23 +1106,14 @@ async function deleteActivity(type, id) {
   try {
     await api(endpoints[type] + "?teacher_id=" + currentUser.id, { method: "DELETE" });
     await loadTeacherActivities();
+    if (currentTeacherActivitiesClassId) {
+      await openTeacherClassActivities(currentTeacherActivitiesClassId);
+    }
   } catch (error) {
     showToast(error.message, "error");
   }
 }
 window.deleteActivity = deleteActivity;
-
-function updateTeacherMetrics(activities) {
-  function setMetric(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
-  }
-
-  setMetric("metric-classes", teacherClasses.length);
-  setMetric("metric-tasks", activities.filter(function (a) { return a.type === "task"; }).length);
-  setMetric("metric-exams", activities.filter(function (a) { return a.type === "exam"; }).length);
-  setMetric("metric-projects", activities.filter(function (a) { return a.type === "project"; }).length);
-}
 
 // ============================================================
 // SEGUIMIENTO DE TAREAS
@@ -1631,7 +1693,7 @@ function formatDays(days) {
 }
 
 // ============================================================
-// NOTAS DEL ALUMNO (ahora desplegable al pulsar)
+// NOTAS DEL ALUMNO
 // ============================================================
 
 async function loadStudentGrades() {
