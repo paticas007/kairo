@@ -109,13 +109,13 @@
         </div>
 
         <div class="panel">
-          <h2>Mis clases</h2>
-          <div id="teacher-classes-dashboard" class="cards"></div>
-        </div>
-
-        <div class="panel" style="margin-top: 24px;">
           <h2>Actividades por corregir</h2>
           <div id="teacher-activities-dashboard"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Mis clases</h2>
+          <div id="teacher-classes-dashboard" class="cards"></div>
         </div>
       </div>
 
@@ -129,11 +129,38 @@
 
       <div class="view hidden" id="teacher-view-tasks">
         <div class="view-header">
-          <div><h1>Actividades</h1><p>Tareas, exámenes y proyectos de todas tus clases.</p></div>
+          <div><h1>Actividades</h1><p>Elige una clase para ver sus actividades.</p></div>
+        </div>
+        <div id="teacher-activities-class-picker" class="cards"></div>
+      </div>
+
+      <div class="view hidden" id="teacher-view-class-activities">
+        <div class="view-header">
+          <div>
+            <button class="back-btn" onclick="setActiveView('teacher','tasks')">← Volver</button>
+            <h1 id="teacher-class-activities-title">Clase</h1>
+          </div>
           <button class="primary-btn" onclick="document.getElementById('modal-create-activity').showModal()">+ Nueva actividad</button>
         </div>
+
         <div class="panel">
-          <div id="teacher-activities"></div>
+          <h2>✅ Completadas por todos</h2>
+          <div id="teacher-tasks-completed"></div>
+        </div>
+
+        <div class="panel">
+          <h2>⏳ Pendientes (faltan alumnos)</h2>
+          <div id="teacher-tasks-pending"></div>
+        </div>
+
+        <div class="panel">
+          <h2>🕓 Programadas</h2>
+          <div id="teacher-scheduled"></div>
+        </div>
+
+        <div class="panel">
+          <h2>📚 Exámenes y proyectos</h2>
+          <div id="teacher-exams-projects"></div>
         </div>
       </div>
 
@@ -300,7 +327,13 @@
 
       <input id="activity-title" type="text" placeholder="Título" required>
       <textarea id="activity-description" placeholder="Descripción"></textarea>
+
+      <label class="modal-note" style="display:block; margin-top: 4px;">Fecha de entrega / examen</label>
       <input id="activity-date" type="date" required>
+
+      <label class="modal-note" style="display:block; margin-top: 4px;">Publicar el (opcional)</label>
+      <input id="activity-publish-date" type="date">
+      <p class="modal-note">Déjalo vacío para publicarla ya. Si eliges una fecha futura, se publicará sola ese día.</p>
 
       <div class="choice-group" data-target="activity-priority">
         <button type="button" class="choice-btn priority-high" data-value="alta">🔴 Alta</button>
@@ -316,9 +349,7 @@
         </label>
       </div>
 
-      <p class="modal-note">Los alumnos verán esta actividad en cuanto la publiques.</p>
-
-      <button type="submit" class="primary-btn">Publicar actividad</button>
+      <button type="submit" class="primary-btn">Guardar actividad</button>
     </form>
   </div>
 </dialog>
@@ -375,10 +406,10 @@
       <p class="modal-note">Desde aquí puedes reiniciar completamente la base de datos. Esto borra todas las cuentas, clases, tareas, exámenes y proyectos, sin posibilidad de deshacerlo.</p>
       <button type="button" class="primary-btn danger-btn" id="admin-reset-btn">🗑️ Reiniciar base de datos</button>
     </div>
-    
+
   </div>
 </dialog>
-  
+
 <script src="/static/script.js"></script>
 </body>
 </html>
