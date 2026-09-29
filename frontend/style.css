@@ -5,25 +5,28 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
 :root {
-  --bg: #0b0d12;
-  --bg-elevated: #11141b;
-  --bg-panel: #10131a;
-  --bg-input: #0c0f15;
-  --border: #242a35;
+  --bg: #060610;
+  --bg-elevated: #0d0d16;
+  --bg-panel: #090912;
+  --bg-input: #0e0e1a;
+  --border: rgba(255, 255, 255, 0.08);
   --text: #f4f5f7;
-  --text-muted: #8f98aa;
+  --text-muted: rgba(255, 255, 255, 0.55);
 
   --teacher-accent: #0ea5e9;
+  --teacher-accent-dark: #0284c7;
   --teacher-accent-soft: rgba(14, 165, 233, 0.14);
   --student-accent: #7c3aed;
+  --student-accent-dark: #6d28d9;
   --student-accent-soft: rgba(124, 58, 237, 0.14);
 
-  --danger: #ef4444;
-  --danger-soft: rgba(239, 68, 68, 0.14);
-  --success: #22c55e;
-  --success-soft: rgba(34, 197, 94, 0.14);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --exam-accent: #a78bfa;
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -109,10 +112,10 @@ h1, h2, h3, h4 { margin-top: 0; }
   background: var(--bg-elevated);
   color: white;
   cursor: pointer;
-  transition: 0.2s;
+  transition: 0.18s;
 }
-.role-card:nth-child(1):hover { border-color: var(--student-accent); background: #151122; }
-.role-card:nth-child(2):hover { border-color: var(--teacher-accent); background: #0f1721; }
+.role-card:nth-child(1):hover { border-color: var(--student-accent); background: #12101f; }
+.role-card:nth-child(2):hover { border-color: var(--teacher-accent); background: #0e1620; }
 .role-card:hover { transform: translateY(-3px); }
 
 .role-title { display: block; font-size: 23px; font-weight: 700; margin-bottom: 15px; }
@@ -140,7 +143,7 @@ input, select, textarea {
   color: white;
   outline: none;
 }
-input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); transition: border-color 0.2s; }
 textarea { min-height: 100px; resize: vertical; }
 
 button { border: none; }
@@ -165,7 +168,7 @@ button { border: none; }
   color: white;
   cursor: pointer;
 }
-.secondary-btn:hover { background: #171b23; border-color: var(--accent); }
+.secondary-btn:hover { background: rgba(255,255,255,0.05); border-color: var(--accent); }
 
 .text-btn, .back-btn {
   margin-top: 18px;
@@ -384,7 +387,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 .plan-item.priority-baja, .plan-item.priority-low { border-left-color: var(--success); }
 .plan-item.priority-retrasado {
   border-left-color: var(--danger);
-  background: rgba(239, 68, 68, 0.06);
+  background: rgba(248, 113, 113, 0.06);
 }
 
 .plan-item .secondary-btn { margin-top: 12px; margin-right: 8px; }
@@ -579,10 +582,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   gap: 16px;
   margin-bottom: 20px;
 }
-
-/* ============================================================
-   MÓVIL: BARRA INFERIOR MÁS GRANDE (estilo apps famosas)
-============================================================ */
 
 @media (max-width: 900px) {
   .app-shell {
