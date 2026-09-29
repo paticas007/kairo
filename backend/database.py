@@ -278,72 +278,22 @@ def create_tables():
     """)
 
     # --------------------------------------------------------
-    # NOTAS   <-- NUEVO
-    # --------------------------------------------------------
-
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS grades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            activity_type TEXT NOT NULL,
-            activity_id INTEGER NOT NULL,
-            student_id INTEGER NOT NULL,
-            grade REAL NOT NULL,
-            graded_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(activity_type, activity_id, student_id),
-            FOREIGN KEY (student_id)
-                REFERENCES students(id)
-                ON DELETE CASCADE
-        )
-    """)
-
-    # --------------------------------------------------------
-    # ARCHIVOS ENTREGADOS   <-- NUEVO
-    # --------------------------------------------------------
-
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS task_submissions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id INTEGER NOT NULL,
-            student_id INTEGER NOT NULL,
-            file_name TEXT NOT NULL,
-            file_type TEXT NOT NULL,
-            file_data TEXT NOT NULL,
-            submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(task_id, student_id),
-            FOREIGN KEY (task_id)
-                REFERENCES tasks(id)
-                ON DELETE CASCADE,
-            FOREIGN KEY (student_id)
-                REFERENCES students(id)
-                ON DELETE CASCADE
-        )
-    """)
-
-    # --------------------------------------------------------
     # PARCHES para bases de datos que ya existían de antes
     # --------------------------------------------------------
 
     for table_name in ["tasks", "exams", "projects"]:
-        try:
-            connection.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN category_id INTEGER"
-            )
-        except Exception:
-            pass
+        for column_def in ["category_id INTEGER", "publish_date TEXT"]:
+            try:
+                connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
+            except Exception:
+                pass
 
     for table_name in ["teachers", "students"]:
-        try:
-            connection.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN security_question TEXT"
-            )
-        except Exception:
-            pass
-        try:
-            connection.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN security_answer TEXT"
-            )
-        except Exception:
-            pass
+        for column_def in ["security_question TEXT", "security_answer TEXT"]:
+            try:
+                connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
+            except Exception:
+                pass
 
     connection.commit()
     connection.close()
