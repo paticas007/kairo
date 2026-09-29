@@ -144,6 +144,20 @@ def compute_weighted_average(category_data: list[dict]):
     return None
 
 
+def is_published(publish_date_str) -> bool:
+    """
+    Una actividad sin fecha de publicación se considera
+    publicada ya. Si tiene fecha, solo está publicada cuando
+    esa fecha ya ha llegado (hoy o antes).
+    """
+    if not publish_date_str:
+        return True
+    try:
+        return publish_date_str <= date.today().isoformat()
+    except Exception:
+        return True
+
+
 # ============================================================
 # MODELOS
 # ============================================================
@@ -195,6 +209,7 @@ class TaskCreate(BaseModel):
     due_date: str
     priority: str = "media"
     mandatory: bool = True
+    publish_date: str | None = None
 
 
 class ExamCreate(BaseModel):
@@ -204,6 +219,7 @@ class ExamCreate(BaseModel):
     description: str = ""
     exam_date: str
     importance: str = "media"
+    publish_date: str | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -213,6 +229,7 @@ class ProjectCreate(BaseModel):
     description: str = ""
     due_date: str
     priority: str = "media"
+    publish_date: str | None = None
 
 
 class EvaluationCategoryItem(BaseModel):
@@ -743,10 +760,15 @@ def get_class_student_view(class_id: int, student_id: int):
 
     connection.close()
 
+    # Solo se muestran al alumno las actividades ya publicadas.
+    visible_tasks = [dict(t) for t in tasks if is_published(t["publish_date"])]
+    visible_exams = [dict(e) for e in exams if is_published(e["publish_date"])]
+    visible_projects = [dict(p) for p in projects if is_published(p["publish_date"])]
+
     return {
-        "tasks": [dict(t) for t in tasks],
-        "exams": [dict(e) for e in exams],
-        "projects": [dict(p) for p in projects]
+        "tasks": visible_tasks,
+        "exams": visible_exams,
+        "projects": visible_projects
     }
 
 
@@ -831,12 +853,12 @@ def create_task(data: TaskCreate):
 
     cursor = connection.execute(
         """
-        INSERT INTO tasks (class_id, category_id, title, description, due_date, priority, mandatory)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (class_id, category_id, title, description, due_date, priority, mandatory, publish_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data.class_id, data.category_id, data.title.strip(), data.description.strip(),
-            data.due_date, data.priority, 1 if data.mandatory else 0
+            data.due_date, data.priority, 1 if data.mandatory else 0, data.publish_date
         )
     )
     connection.commit()
@@ -995,7 +1017,7 @@ def get_submission_file(task_id: int, student_id: int):
 
 
 # ============================================================
-# ACTIVIDADES POR CORREGIR (profesor)   <-- NUEVO
+# ACTIVIDADES POR CORREGIR (profesor)
 # ============================================================
 
 @app.get("/api/teachers/{teacher_id}/pending-corrections")
@@ -1030,6 +1052,114 @@ def get_pending_corrections(teacher_id: int):
     connection.close()
 
     return [dict(row) for row in rows]
+
+
+# ============================================================
+# ACTIVIDADES DE UNA CLASE, POR ESTADO (profesor)   <-- NUEVO
+# ============================================================
+
+@app.get("/api/classes/{class_id}/activities-status")
+def get_class_activities_status(class_id: int):
+
+    connection = get_connection()
+
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (class_id,)
+    ).fetchone()
+
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    total_students_row = connection.execute(
+        "SELECT COUNT(*) AS total FROM class_students WHERE class_id = ?",
+        (class_id,)
+    ).fetchone()
+    total_students = total_students_row["total"]
+
+    today_str = date.today().isoformat()
+
+    tasks = connection.execute(
+        """
+        SELECT tasks.*, evaluation_categories.name AS category_name,
+               (SELECT COUNT(*) FROM task_completions WHERE task_completions.task_id = tasks.id) AS completed_count
+        FROM tasks
+        LEFT JOIN evaluation_categories ON tasks.category_id = evaluation_categories.id
+        WHERE tasks.class_id = ?
+        ORDER BY tasks.due_date
+        """,
+        (class_id,)
+    ).fetchall()
+
+    exams = connection.execute(
+        """
+        SELECT exams.*, evaluation_categories.name AS category_name
+        FROM exams
+        LEFT JOIN evaluation_categories ON exams.category_id = evaluation_categories.id
+        WHERE exams.class_id = ?
+        ORDER BY exams.exam_date
+        """,
+        (class_id,)
+    ).fetchall()
+
+    projects = connection.execute(
+        """
+        SELECT projects.*, evaluation_categories.name AS category_name
+        FROM projects
+        LEFT JOIN evaluation_categories ON projects.category_id = evaluation_categories.id
+        WHERE projects.class_id = ?
+        ORDER BY projects.due_date
+        """,
+        (class_id,)
+    ).fetchall()
+
+    connection.close()
+
+    tasks_completed = []
+    tasks_pending = []
+    scheduled = []
+    exams_projects = []
+
+    for task in tasks:
+        task_dict = dict(task)
+        task_dict["type"] = "task"
+        task_dict["total_students"] = total_students
+        publish_date = task_dict.get("publish_date")
+
+        if publish_date and publish_date > today_str:
+            scheduled.append(task_dict)
+        elif total_students > 0 and task_dict["completed_count"] >= total_students:
+            tasks_completed.append(task_dict)
+        else:
+            tasks_pending.append(task_dict)
+
+    for exam in exams:
+        exam_dict = dict(exam)
+        exam_dict["type"] = "exam"
+        publish_date = exam_dict.get("publish_date")
+
+        if publish_date and publish_date > today_str:
+            scheduled.append(exam_dict)
+        else:
+            exams_projects.append(exam_dict)
+
+    for project in projects:
+        project_dict = dict(project)
+        project_dict["type"] = "project"
+        publish_date = project_dict.get("publish_date")
+
+        if publish_date and publish_date > today_str:
+            scheduled.append(project_dict)
+        else:
+            exams_projects.append(project_dict)
+
+    return {
+        "total_students": total_students,
+        "tasks_completed": tasks_completed,
+        "tasks_pending": tasks_pending,
+        "scheduled": scheduled,
+        "exams_projects": exams_projects
+    }
 
 
 # ============================================================
@@ -1115,7 +1245,6 @@ def get_gradebook(class_id: int):
     activities.extend({"type": "exam", **dict(e)} for e in exams)
     activities.extend({"type": "project", **dict(p)} for p in projects)
 
-    # Añadimos el % de la categoría a cada actividad   <-- NUEVO
     for activity in activities:
         category = category_lookup.get(activity.get("category_id"))
         activity["category_name"] = category["name"] if category else None
@@ -1299,10 +1428,10 @@ def create_exam(data: ExamCreate):
 
     cursor = connection.execute(
         """
-        INSERT INTO exams (class_id, category_id, title, description, exam_date, importance)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO exams (class_id, category_id, title, description, exam_date, importance, publish_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (data.class_id, data.category_id, data.title.strip(), data.description.strip(), data.exam_date, data.importance)
+        (data.class_id, data.category_id, data.title.strip(), data.description.strip(), data.exam_date, data.importance, data.publish_date)
     )
     connection.commit()
     exam_id = cursor.lastrowid
@@ -1353,10 +1482,10 @@ def create_project(data: ProjectCreate):
 
     cursor = connection.execute(
         """
-        INSERT INTO projects (class_id, category_id, title, description, due_date, priority)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO projects (class_id, category_id, title, description, due_date, priority, publish_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (data.class_id, data.category_id, data.title.strip(), data.description.strip(), data.due_date, data.priority)
+        (data.class_id, data.category_id, data.title.strip(), data.description.strip(), data.due_date, data.priority, data.publish_date)
     )
     connection.commit()
     project_id = cursor.lastrowid
@@ -1425,7 +1554,7 @@ def get_class_projects(class_id: int):
 
 
 # ============================================================
-# ACTIVIDADES DEL PROFESOR
+# ACTIVIDADES DEL PROFESOR (usado para las métricas de Inicio)
 # ============================================================
 
 @app.get("/api/teachers/{teacher_id}/activities")
@@ -1523,6 +1652,9 @@ def get_student_plan(student_id: int):
         ).fetchall()
 
         for task in tasks:
+            if not is_published(task["publish_date"]):
+                continue
+
             hours_left = calculate_hours_left(task["due_date"])
             if hours_left > MAX_PLAN_WINDOW_HOURS:
                 continue
@@ -1542,11 +1674,6 @@ def get_student_plan(student_id: int):
                 "mandatory": effective_mandatory
             })
 
-        # --------------------------------------------------------
-        # EXÁMENES: no se quedan "retrasados" para siempre. Una
-        # vez pasa el día del examen, desaparecen del plan.
-        # --------------------------------------------------------
-
         exams = connection.execute(
             """
             SELECT e.*, ec.percentage AS category_weight
@@ -1558,6 +1685,9 @@ def get_student_plan(student_id: int):
         ).fetchall()
 
         for exam in exams:
+            if not is_published(exam["publish_date"]):
+                continue
+
             hours_left = calculate_hours_left(exam["exam_date"])
 
             if hours_left < 0:
@@ -1590,6 +1720,9 @@ def get_student_plan(student_id: int):
         ).fetchall()
 
         for project in projects:
+            if not is_published(project["publish_date"]):
+                continue
+
             hours_left = calculate_hours_left(project["due_date"])
             if hours_left > MAX_PLAN_WINDOW_HOURS:
                 continue
