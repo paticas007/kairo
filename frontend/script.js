@@ -1777,3 +1777,216 @@ async function loadStudentGrades() {
     container.innerHTML = "<p>No se pudieron cargar las notas.</p>";
   }
 }
+
+// ============================================================
+// CALENDARIO Y CARGA ACADÉMICA   <-- NUEVO
+// ============================================================
+
+let calendarDataCache = { teacher: null, student: null };
+let calendarViewMonth = { teacher: new Date(), student: new Date() };
+let calendarSelectedDate = { teacher: null, student: null };
+
+function countActivitiesByDay(activities) {
+  const counts = {};
+  activities.forEach(function (item) {
+    if (!item.date) return;
+    counts[item.date] = (counts[item.date] || 0) + 1;
+  });
+  return counts;
+}
+
+function loadLevelForCount(count) {
+  if (count >= 3) return "alta";
+  if (count === 2) return "media";
+  if (count === 1) return "baja";
+  return "ninguna";
+}
+
+function dotClassForLevel(level) {
+  if (level === "alta") return "dot-alta";
+  if (level === "media") return "dot-media";
+  if (level === "baja") return "dot-baja";
+  return "dot-none";
+}
+
+async function ensureCalendarData(role) {
+  if (calendarDataCache[role]) return calendarDataCache[role];
+
+  const url = role === "teacher"
+    ? "/api/teachers/" + currentUser.id + "/calendar"
+    : "/api/students/" + currentUser.id + "/calendar";
+
+  const data = await api(url);
+  calendarDataCache[role] = data;
+  return data;
+}
+
+async function openCalendarView(role) {
+  await ensureCalendarData(role);
+  renderCalendarGrid(role);
+}
+
+function navigateCalendarMonth(role, direction) {
+  const current = calendarViewMonth[role];
+  calendarViewMonth[role] = new Date(current.getFullYear(), current.getMonth() + direction, 1);
+  renderCalendarGrid(role);
+}
+window.navigateCalendarMonth = navigateCalendarMonth;
+
+function renderCalendarGrid(role) {
+  const activities = calendarDataCache[role] || [];
+  const counts = countActivitiesByDay(activities);
+
+  const monthDate = calendarViewMonth[role];
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+
+  const monthLabel = document.getElementById(role + "-calendar-month-label");
+  if (monthLabel) {
+    monthLabel.textContent = monthDate.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  }
+
+  const grid = document.getElementById(role + "-calendar-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const firstDay = new Date(year, month, 1);
+  const startOffset = (firstDay.getDay() + 6) % 7; // lunes = 0
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  for (let i = 0; i < startOffset; i++) {
+    const empty = document.createElement("div");
+    empty.className = "calendar-day calendar-day-empty";
+    grid.appendChild(empty);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+    const count = counts[dateStr] || 0;
+    const level = loadLevelForCount(count);
+
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "calendar-day";
+    if (dateStr === todayStr) cell.classList.add("calendar-day-today");
+    if (dateStr === calendarSelectedDate[role]) cell.classList.add("calendar-day-selected");
+
+    cell.innerHTML = "<span>" + day + "</span><span class='dot " + dotClassForLevel(level) + "'></span>";
+    cell.addEventListener("click", function () {
+      selectCalendarDay(role, dateStr);
+    });
+
+    grid.appendChild(cell);
+  }
+
+  if (!calendarSelectedDate[role]) {
+    const defaultDate = (year === new Date().getFullYear() && month === new Date().getMonth())
+      ? todayStr
+      : (year + "-" + String(month + 1).padStart(2, "0") + "-01");
+    selectCalendarDay(role, defaultDate);
+  } else {
+    renderCalendarDayDetail(role, calendarSelectedDate[role]);
+  }
+}
+
+function selectCalendarDay(role, dateStr) {
+  calendarSelectedDate[role] = dateStr;
+  renderCalendarGrid(role);
+  renderCalendarDayDetail(role, dateStr);
+}
+
+function renderCalendarDayDetail(role, dateStr) {
+  const activities = calendarDataCache[role] || [];
+  const dayActivities = activities.filter(function (item) { return item.date === dateStr; });
+
+  const titleEl = document.getElementById(role + "-calendar-day-title");
+  const detailEl = document.getElementById(role + "-calendar-day-detail");
+  if (!detailEl) return;
+
+  const dateObj = new Date(dateStr + "T00:00:00");
+  if (titleEl) {
+    titleEl.textContent = dateObj.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  }
+
+  if (dayActivities.length === 0) {
+    detailEl.innerHTML = "<p>Día libre.</p>";
+    return;
+  }
+
+  detailEl.innerHTML = dayActivities.map(function (item) {
+    let typeLabel = "📝 Tarea";
+    if (item.type === "exam") typeLabel = "📚 Examen";
+    else if (item.type === "project") typeLabel = "🗂️ Proyecto";
+
+    return (
+      '<div class="plan-item">' +
+        '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
+        '<div class="plan-meta">' + item.course + " " + item.group_name + " · " + item.subject + "</div>" +
+      "</div>"
+    );
+  }).join("");
+}
+
+// ============================================================
+// CARGA ACADÉMICA (semana actual)
+// ============================================================
+
+async function openWorkloadView(role) {
+  await ensureCalendarData(role);
+  renderWorkload(role);
+}
+
+function renderWorkload(role) {
+  const activities = calendarDataCache[role] || [];
+  const counts = countActivitiesByDay(activities);
+
+  const today = new Date();
+  const mondayOffset = (today.getDay() + 6) % 7;
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset);
+
+  const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const weekDays = [];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const count = counts[dateStr] || 0;
+    weekDays.push({ label: dayNames[i] + " " + d.getDate(), count: count, level: loadLevelForCount(count) });
+  }
+
+  const daysContainer = document.getElementById(role + "-workload-days");
+  if (daysContainer) {
+    daysContainer.innerHTML = weekDays.map(function (day) {
+      const barColor = day.level === "alta" ? "var(--danger)" : (day.level === "media" ? "var(--warning)" : "var(--success)");
+      const widthPercent = Math.min(day.count, 4) / 4 * 100;
+      const levelText = day.count === 0 ? "sin actividades" : day.level;
+
+      return (
+        '<div class="workload-day-row">' +
+          "<span>" + day.label + "</span>" +
+          '<div class="workload-bar-track"><div class="workload-bar-fill" style="width:' + widthPercent + '%; background:' + barColor + ';"></div></div>' +
+          "<span>" + levelText + "</span>" +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  const maxLevel = weekDays.reduce(function (acc, day) {
+    const order = { ninguna: 0, baja: 1, media: 2, alta: 3 };
+    return order[day.level] > order[acc] ? day.level : acc;
+  }, "ninguna");
+
+  const summaryEl = document.getElementById(role + "-workload-summary");
+  if (summaryEl) {
+    let message = "Semana sin actividades registradas.";
+    if (maxLevel === "alta") message = "Esta semana tienes días con carga alta. Organiza bien tu tiempo.";
+    else if (maxLevel === "media") message = "Esta semana tienes carga moderada. Vas bien, sigue así.";
+    else if (maxLevel === "baja") message = "Semana tranquila, buen momento para adelantar trabajo.";
+
+    summaryEl.innerHTML =
+      '<div style="width:28px;height:28px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#06070a;flex-shrink:0;">K</div>' +
+      '<div><strong>Análisis KAIRO</strong><div class="plan-meta">' + message + "</div></div>";
+  }
+}
