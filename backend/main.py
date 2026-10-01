@@ -1613,6 +1613,129 @@ def get_teacher_activities(teacher_id: int):
 
     return activities
 
+# ============================================================
+# CALENDARIO (profesor y alumno)   <-- NUEVO
+# ============================================================
+
+@app.get("/api/teachers/{teacher_id}/calendar")
+def get_teacher_calendar(teacher_id: int):
+    connection = get_connection()
+
+    tasks = connection.execute(
+        """
+        SELECT 'task' AS type, tasks.id, tasks.title, tasks.due_date AS date,
+               classes.course, classes.group_name, classes.subject
+        FROM tasks
+        INNER JOIN classes ON tasks.class_id = classes.id
+        WHERE classes.teacher_id = ?
+        """,
+        (teacher_id,)
+    ).fetchall()
+
+    exams = connection.execute(
+        """
+        SELECT 'exam' AS type, exams.id, exams.title, exams.exam_date AS date,
+               classes.course, classes.group_name, classes.subject
+        FROM exams
+        INNER JOIN classes ON exams.class_id = classes.id
+        WHERE classes.teacher_id = ?
+        """,
+        (teacher_id,)
+    ).fetchall()
+
+    projects = connection.execute(
+        """
+        SELECT 'project' AS type, projects.id, projects.title, projects.due_date AS date,
+               classes.course, classes.group_name, classes.subject
+        FROM projects
+        INNER JOIN classes ON projects.class_id = classes.id
+        WHERE classes.teacher_id = ?
+        """,
+        (teacher_id,)
+    ).fetchall()
+
+    connection.close()
+
+    activities = []
+    activities.extend(dict(row) for row in tasks)
+    activities.extend(dict(row) for row in exams)
+    activities.extend(dict(row) for row in projects)
+
+    return activities
+
+
+@app.get("/api/students/{student_id}/calendar")
+def get_student_calendar(student_id: int):
+    connection = get_connection()
+
+    classes = connection.execute(
+        """
+        SELECT c.id, c.course, c.group_name, c.subject
+        FROM classes c
+        INNER JOIN class_students cs ON c.id = cs.class_id
+        WHERE cs.student_id = ?
+        """,
+        (student_id,)
+    ).fetchall()
+
+    activities = []
+
+    for class_item in classes:
+        class_id = class_item["id"]
+
+        tasks = connection.execute(
+            """
+            SELECT tasks.*,
+                   CASE WHEN task_completions.student_id IS NOT NULL THEN 1 ELSE 0 END AS completed
+            FROM tasks
+            LEFT JOIN task_completions
+                ON task_completions.task_id = tasks.id AND task_completions.student_id = ?
+            WHERE tasks.class_id = ?
+            """,
+            (student_id, class_id)
+        ).fetchall()
+
+        for task in tasks:
+            if not is_published(task["publish_date"]):
+                continue
+            activities.append({
+                "type": "task", "id": task["id"], "title": task["title"],
+                "date": task["due_date"], "course": class_item["course"],
+                "group_name": class_item["group_name"], "subject": class_item["subject"],
+                "completed": bool(task["completed"])
+            })
+
+        exams = connection.execute(
+            "SELECT * FROM exams WHERE class_id = ?", (class_id,)
+        ).fetchall()
+
+        for exam in exams:
+            if not is_published(exam["publish_date"]):
+                continue
+            activities.append({
+                "type": "exam", "id": exam["id"], "title": exam["title"],
+                "date": exam["exam_date"], "course": class_item["course"],
+                "group_name": class_item["group_name"], "subject": class_item["subject"],
+                "completed": False
+            })
+
+        projects = connection.execute(
+            "SELECT * FROM projects WHERE class_id = ?", (class_id,)
+        ).fetchall()
+
+        for project in projects:
+            if not is_published(project["publish_date"]):
+                continue
+            activities.append({
+                "type": "project", "id": project["id"], "title": project["title"],
+                "date": project["due_date"], "course": class_item["course"],
+                "group_name": class_item["group_name"], "subject": class_item["subject"],
+                "completed": False
+            })
+
+    connection.close()
+
+    return activities
 
 # ============================================================
 # PLAN DIARIO
