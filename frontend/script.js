@@ -74,8 +74,14 @@ function initializeKairo() {
       setActiveView(role, btn.dataset.view);
 
       if (role === "student" && btn.dataset.view === "grades") {
-        loadStudentGrades();
-      }
+  loadStudentGrades();
+}
+if (btn.dataset.view === "calendar") {
+  openCalendarView(role);
+}
+if (btn.dataset.view === "workload") {
+  openWorkloadView(role);
+}
     });
   });
 
