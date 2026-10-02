@@ -182,47 +182,48 @@
         <div class="view-header">
           <div><h1>Notas</h1><p>Pon nota a cada actividad. Los archivos entregados por los alumnos aparecen con 📎.</p></div>
         </div>
-        <div class="view hidden" id="teacher-view-calendar">
-  <div class="view-header">
-    <div><h1>Calendario</h1><p>Todas las actividades de tus clases.</p></div>
-  </div>
-  <div class="panel">
-    <div class="calendar-header">
-      <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('teacher', -1)">◀</button>
-      <span id="teacher-calendar-month-label" class="calendar-month-label"></span>
-      <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('teacher', 1)">▶</button>
-    </div>
-    <div class="calendar-weekdays"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
-    <div id="teacher-calendar-grid" class="calendar-grid"></div>
-  </div>
-  <div class="panel">
-    <h2 id="teacher-calendar-day-title">Selecciona un día</h2>
-    <div id="teacher-calendar-day-detail"></div>
-  </div>
-</div>
-
-<div class="view hidden" id="teacher-view-workload">
-  <div class="view-header">
-    <div><h1>Carga académica</h1><p>Análisis de la semana actual.</p></div>
-  </div>
-  <div class="panel">
-    <div id="teacher-workload-summary" class="workload-summary"></div>
-  </div>
-  <div class="panel">
-    <h2>Distribución diaria</h2>
-    <div id="teacher-workload-days"></div>
-    <div class="workload-legend">
-      <span><i class="dot dot-baja"></i> Carga baja</span>
-      <span><i class="dot dot-media"></i> Carga media</span>
-      <span><i class="dot dot-alta"></i> Carga alta</span>
-    </div>
-  </div>
-</div>
         <div class="panel">
           <select id="gradebook-class">
             <option value="">Selecciona una clase</option>
           </select>
           <div id="gradebook-table-container" style="margin-top: 16px;"></div>
+        </div>
+      </div>
+
+      <div class="view hidden" id="teacher-view-calendar">
+        <div class="view-header">
+          <div><h1>Calendario</h1><p>Todas las actividades de tus clases.</p></div>
+        </div>
+        <div class="panel">
+          <div class="calendar-header">
+            <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('teacher', -1)">◀</button>
+            <span id="teacher-calendar-month-label" class="calendar-month-label"></span>
+            <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('teacher', 1)">▶</button>
+          </div>
+          <div class="calendar-weekdays"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+          <div id="teacher-calendar-grid" class="calendar-grid"></div>
+        </div>
+        <div class="panel">
+          <h2 id="teacher-calendar-day-title">Selecciona un día</h2>
+          <div id="teacher-calendar-day-detail"></div>
+        </div>
+      </div>
+
+      <div class="view hidden" id="teacher-view-workload">
+        <div class="view-header">
+          <div><h1>Carga académica</h1><p>Análisis de la semana actual.</p></div>
+        </div>
+        <div class="panel">
+          <div id="teacher-workload-summary" class="workload-summary"></div>
+        </div>
+        <div class="panel">
+          <h2>Distribución diaria</h2>
+          <div id="teacher-workload-days"></div>
+          <div class="workload-legend">
+            <span><i class="dot dot-baja"></i> Carga baja</span>
+            <span><i class="dot dot-media"></i> Carga media</span>
+            <span><i class="dot dot-alta"></i> Carga alta</span>
+          </div>
         </div>
       </div>
 
@@ -239,6 +240,8 @@
       <button class="nav-item" data-view="classes">📚 &nbsp;Mis clases</button>
       <button class="nav-item" data-view="plan">🗓️ &nbsp;Plan diario</button>
       <button class="nav-item" data-view="grades">🎯 &nbsp;Notas</button>
+      <button class="nav-item" data-view="calendar">📅 &nbsp;Calendario</button>
+      <button class="nav-item" data-view="workload">📈 &nbsp;Carga académica</button>
 
       <div class="nav-spacer"></div>
       <button class="nav-item logout-item" id="student-logout-btn">🚪 &nbsp;Cerrar sesión</button>
@@ -310,42 +313,44 @@
         </div>
         <div id="student-grades"></div>
       </div>
-      <div class="view hidden" id="student-view-calendar">
-  <div class="view-header">
-    <div><h1>Calendario</h1><p>Todas las actividades de tus clases.</p></div>
-  </div>
-  <div class="panel">
-    <div class="calendar-header">
-      <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('student', -1)">◀</button>
-      <span id="student-calendar-month-label" class="calendar-month-label"></span>
-      <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('student', 1)">▶</button>
-    </div>
-    <div class="calendar-weekdays"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
-    <div id="student-calendar-grid" class="calendar-grid"></div>
-  </div>
-  <div class="panel">
-    <h2 id="student-calendar-day-title">Selecciona un día</h2>
-    <div id="student-calendar-day-detail"></div>
-  </div>
-</div>
 
-<div class="view hidden" id="student-view-workload">
-  <div class="view-header">
-    <div><h1>Carga académica</h1><p>Análisis de la semana actual.</p></div>
-  </div>
-  <div class="panel">
-    <div id="student-workload-summary" class="workload-summary"></div>
-  </div>
-  <div class="panel">
-    <h2>Distribución diaria</h2>
-    <div id="student-workload-days"></div>
-    <div class="workload-legend">
-      <span><i class="dot dot-baja"></i> Carga baja</span>
-      <span><i class="dot dot-media"></i> Carga media</span>
-      <span><i class="dot dot-alta"></i> Carga alta</span>
-    </div>
-  </div>
-</div>
+      <div class="view hidden" id="student-view-calendar">
+        <div class="view-header">
+          <div><h1>Calendario</h1><p>Todas las actividades de tus clases.</p></div>
+        </div>
+        <div class="panel">
+          <div class="calendar-header">
+            <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('student', -1)">◀</button>
+            <span id="student-calendar-month-label" class="calendar-month-label"></span>
+            <button type="button" class="secondary-btn" onclick="navigateCalendarMonth('student', 1)">▶</button>
+          </div>
+          <div class="calendar-weekdays"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+          <div id="student-calendar-grid" class="calendar-grid"></div>
+        </div>
+        <div class="panel">
+          <h2 id="student-calendar-day-title">Selecciona un día</h2>
+          <div id="student-calendar-day-detail"></div>
+        </div>
+      </div>
+
+      <div class="view hidden" id="student-view-workload">
+        <div class="view-header">
+          <div><h1>Carga académica</h1><p>Análisis de la semana actual.</p></div>
+        </div>
+        <div class="panel">
+          <div id="student-workload-summary" class="workload-summary"></div>
+        </div>
+        <div class="panel">
+          <h2>Distribución diaria</h2>
+          <div id="student-workload-days"></div>
+          <div class="workload-legend">
+            <span><i class="dot dot-baja"></i> Carga baja</span>
+            <span><i class="dot dot-media"></i> Carga media</span>
+            <span><i class="dot dot-alta"></i> Carga alta</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
