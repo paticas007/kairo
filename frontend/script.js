@@ -14,6 +14,10 @@ let adminSecret = null;
 let currentClassDetailId = null;
 let currentTeacherActivitiesClassId = null;
 
+let calendarDataCache = { teacher: null, student: null };
+let calendarViewMonth = { teacher: new Date(), student: new Date() };
+let calendarSelectedDate = { teacher: null, student: null };
+
 const MAX_FILE_BYTES = 4.3 * 1024 * 1024;
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -74,14 +78,14 @@ function initializeKairo() {
       setActiveView(role, btn.dataset.view);
 
       if (role === "student" && btn.dataset.view === "grades") {
-  loadStudentGrades();
-}
-if (btn.dataset.view === "calendar") {
-  openCalendarView(role);
-}
-if (btn.dataset.view === "workload") {
-  openWorkloadView(role);
-}
+        loadStudentGrades();
+      }
+      if (btn.dataset.view === "calendar") {
+        openCalendarView(role);
+      }
+      if (btn.dataset.view === "workload") {
+        openWorkloadView(role);
+      }
     });
   });
 
@@ -1785,12 +1789,8 @@ async function loadStudentGrades() {
 }
 
 // ============================================================
-// CALENDARIO Y CARGA ACADÉMICA   <-- NUEVO
+// CALENDARIO Y CARGA ACADÉMICA
 // ============================================================
-
-let calendarDataCache = { teacher: null, student: null };
-let calendarViewMonth = { teacher: new Date(), student: new Date() };
-let calendarSelectedDate = { teacher: null, student: null };
 
 function countActivitiesByDay(activities) {
   const counts = {};
@@ -1857,7 +1857,7 @@ function renderCalendarGrid(role) {
   grid.innerHTML = "";
 
   const firstDay = new Date(year, month, 1);
-  const startOffset = (firstDay.getDay() + 6) % 7; // lunes = 0
+  const startOffset = (firstDay.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -1934,10 +1934,6 @@ function renderCalendarDayDetail(role, dateStr) {
     );
   }).join("");
 }
-
-// ============================================================
-// CARGA ACADÉMICA (semana actual)
-// ============================================================
 
 async function openWorkloadView(role) {
   await ensureCalendarData(role);
