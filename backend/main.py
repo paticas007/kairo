@@ -145,11 +145,6 @@ def compute_weighted_average(category_data: list[dict]):
 
 
 def is_published(publish_date_str) -> bool:
-    """
-    Una actividad sin fecha de publicación se considera
-    publicada ya. Si tiene fecha, solo está publicada cuando
-    esa fecha ya ha llegado (hoy o antes).
-    """
     if not publish_date_str:
         return True
     try:
@@ -760,7 +755,6 @@ def get_class_student_view(class_id: int, student_id: int):
 
     connection.close()
 
-    # Solo se muestran al alumno las actividades ya publicadas.
     visible_tasks = [dict(t) for t in tasks if is_published(t["publish_date"])]
     visible_exams = [dict(e) for e in exams if is_published(e["publish_date"])]
     visible_projects = [dict(p) for p in projects if is_published(p["publish_date"])]
@@ -1055,7 +1049,7 @@ def get_pending_corrections(teacher_id: int):
 
 
 # ============================================================
-# ACTIVIDADES DE UNA CLASE, POR ESTADO (profesor)   <-- NUEVO
+# ACTIVIDADES DE UNA CLASE, POR ESTADO (profesor)
 # ============================================================
 
 @app.get("/api/classes/{class_id}/activities-status")
@@ -1613,8 +1607,9 @@ def get_teacher_activities(teacher_id: int):
 
     return activities
 
+
 # ============================================================
-# CALENDARIO (profesor y alumno)   <-- NUEVO
+# CALENDARIO (profesor y alumno)
 # ============================================================
 
 @app.get("/api/teachers/{teacher_id}/calendar")
@@ -1736,6 +1731,7 @@ def get_student_calendar(student_id: int):
     connection.close()
 
     return activities
+
 
 # ============================================================
 # PLAN DIARIO
