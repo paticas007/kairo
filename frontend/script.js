@@ -1517,6 +1517,10 @@ function renderClassDetailActivities(container, view) {
 
     const categoryLabel = item.category_name ? (item.category_name + " · ") : "";
 
+    const descriptionHtml = item.description
+      ? '<div class="plan-meta" style="margin-top:10px;white-space:pre-line;">📄 ' + item.description + "</div>"
+      : "";
+
     let actionsHtml = "";
     if (item.type === "task") {
       const doneLabel = item.completed ? "✅ Hecha" : "✅ Marcar como hecha";
@@ -1529,6 +1533,7 @@ function renderClassDetailActivities(container, view) {
     element.innerHTML =
       '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
       '<div class="plan-meta">' + categoryLabel + "Fecha: " + item.due_date + "</div>" +
+      descriptionHtml +
       actionsHtml;
     container.appendChild(element);
   });
@@ -1654,6 +1659,10 @@ async function loadStudentPlan() {
         if (item.type === "exam_preparation") typeLabel = "PREPARACIÓN DE EXAMEN";
         else if (item.type === "project") typeLabel = "PROYECTO";
 
+        const descriptionHtml = item.description
+          ? '<div class="plan-meta" style="margin-top:10px;white-space:pre-line;">📄 ' + item.description + "</div>"
+          : "";
+
         const doneButton = item.type === "task"
           ? '<button type="button" class="secondary-btn" onclick="markTaskComplete(' + item.id + ')">✅ Marcar como hecha</button>'
           : "";
@@ -1666,11 +1675,26 @@ async function loadStudentPlan() {
         element.innerHTML =
           '<div class="plan-title">' + label + " · " + typeLabel + "<br>" + item.title + "</div>" +
           '<div class="plan-meta">' + item.subject + " · " + formatDays(item.days_left) + " · Importancia: " + item.priority + "</div>" +
+          descriptionHtml +
           doneButton +
           submitButtonHtml;
         target.appendChild(element);
       });
     }
+
+    renderList(container, studentPlanCache);
+
+  } catch (error) {
+    console.error("Error generando el plan:", error);
+    if (container) {
+      container.innerHTML =
+        '<div class="plan-item">' +
+          '<div class="plan-title">No se ha podido generar el plan de KAIRO.</div>' +
+          '<div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>' +
+        "</div>";
+    }
+  }
+}
 
     renderList(container, studentPlanCache);
 
