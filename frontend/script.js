@@ -9,6 +9,7 @@ let teacherClasses = [];
 let teacherActivitiesCache = [];
 let studentPlanCache = [];
 let studentClassesCache = [];
+let studentGradesCache = [];
 let categoryRowCounter = 0;
 let adminSecret = null;
 let currentClassDetailId = null;
@@ -1696,20 +1697,6 @@ async function loadStudentPlan() {
   }
 }
 
-    renderList(container, studentPlanCache);
-
-  } catch (error) {
-    console.error("Error generando el plan:", error);
-    if (container) {
-      container.innerHTML =
-        '<div class="plan-item">' +
-          '<div class="plan-title">No se ha podido generar el plan de KAIRO.</div>' +
-          '<div class="plan-meta">Comprueba que el servidor de KAIRO está funcionando.</div>' +
-        "</div>";
-    }
-  }
-}
-
 function updateStudentMetrics(plan) {
   function setMetric(id, value) {
     const el = document.getElementById(id);
@@ -1727,7 +1714,7 @@ function formatDays(days) {
 }
 
 // ============================================================
-// NOTAS DEL ALUMNO
+// NOTAS DEL ALUMNO (ahora con selector de clase)
 // ============================================================
 
 async function loadStudentGrades() {
@@ -1738,6 +1725,7 @@ async function loadStudentGrades() {
 
   try {
     const classesGrades = await api("/api/students/" + currentUser.id + "/grades");
+    studentGradesCache = classesGrades;
 
     if (classesGrades.length === 0) {
       container.innerHTML = "<p>Aún no perteneces a ninguna clase.</p>";
@@ -1746,70 +1734,110 @@ async function loadStudentGrades() {
 
     container.innerHTML = "";
 
+    const selectWrapper = document.createElement("div");
+    selectWrapper.className = "panel";
+    const select = document.createElement("select");
+    select.id = "student-grades-class-select";
+
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.textContent = "Todas mis clases";
+    select.appendChild(allOption);
+
     classesGrades.forEach(function (classData) {
-      const card = document.createElement("div");
-      card.className = "panel";
-
-      const currentText = classData.current_average !== null
-        ? classData.current_average.toFixed(2)
-        : "—";
-      const projectedText = classData.projected_average !== null
-        ? classData.projected_average.toFixed(2)
-        : "—";
-
-      let categoriesHtml = "";
-
-      classData.categories.forEach(function (category) {
-        const avgText = category.average !== null
-          ? category.average.toFixed(2)
-          : "Sin notas todavía";
-
-        let activitiesHtml = "";
-
-        category.activities.forEach(function (activity) {
-          const gradeText = activity.grade !== null ? activity.grade : "—";
-          let typeLabel = "Tarea";
-          if (activity.type === "exam") typeLabel = "Examen";
-          else if (activity.type === "project") typeLabel = "Proyecto";
-
-          activitiesHtml +=
-            '<div class="progress-row">' +
-              typeLabel + " · " + activity.title + ": <strong>&nbsp;" + gradeText + "</strong>" +
-            "</div>";
-        });
-
-        if (activitiesHtml === "") {
-          activitiesHtml = '<div class="progress-row">Todavía no hay actividades en esta categoría.</div>';
-        }
-
-        categoriesHtml +=
-          '<details class="grades-details plan-item">' +
-            "<summary>" + category.name + " (" + category.percentage + "%) — Media: " + avgText + "</summary>" +
-            '<div style="margin-top: 10px;">' + activitiesHtml + "</div>" +
-          "</details>";
-      });
-
-      card.innerHTML =
-        "<h2>" + classData.course + " " + classData.group_name + " — " + classData.subject + "</h2>" +
-        '<div class="grade-summary-grid">' +
-          '<div class="metric-card">' +
-            '<div class="metric-value">' + currentText + "</div>" +
-            '<div class="metric-label">Nota media actual</div>' +
-          "</div>" +
-          '<div class="metric-card">' +
-            '<div class="metric-value">' + projectedText + "</div>" +
-            '<div class="metric-label">Proyección si sigues así</div>' +
-          "</div>" +
-        "</div>" +
-        categoriesHtml;
-
-      container.appendChild(card);
+      const option = document.createElement("option");
+      option.value = String(classData.class_id);
+      option.textContent = classData.course + " " + classData.group_name + " — " + classData.subject;
+      select.appendChild(option);
     });
+
+    select.addEventListener("change", function () {
+      renderStudentGradesCards(select.value);
+    });
+
+    selectWrapper.appendChild(select);
+    container.appendChild(selectWrapper);
+
+    const cardsHolder = document.createElement("div");
+    cardsHolder.id = "student-grades-cards";
+    container.appendChild(cardsHolder);
+
+    renderStudentGradesCards("all");
 
   } catch (error) {
     console.error("Error cargando notas:", error);
     container.innerHTML = "<p>No se pudieron cargar las notas.</p>";
   }
+}
+
+function renderStudentGradesCards(filterClassId) {
+  const holder = document.getElementById("student-grades-cards");
+  if (!holder) return;
+  holder.innerHTML = "";
+
+  const classesToShow = filterClassId === "all"
+    ? studentGradesCache
+    : studentGradesCache.filter(function (c) { return String(c.class_id) === filterClassId; });
+
+  classesToShow.forEach(function (classData) {
+    const card = document.createElement("div");
+    card.className = "panel";
+
+    const currentText = classData.current_average !== null
+      ? classData.current_average.toFixed(2)
+      : "—";
+    const projectedText = classData.projected_average !== null
+      ? classData.projected_average.toFixed(2)
+      : "—";
+
+    let categoriesHtml = "";
+
+    classData.categories.forEach(function (category) {
+      const avgText = category.average !== null
+        ? category.average.toFixed(2)
+        : "Sin notas todavía";
+
+      let activitiesHtml = "";
+
+      category.activities.forEach(function (activity) {
+        const gradeText = activity.grade !== null ? activity.grade : "—";
+        let typeLabel = "Tarea";
+        if (activity.type === "exam") typeLabel = "Examen";
+        else if (activity.type === "project") typeLabel = "Proyecto";
+
+        activitiesHtml +=
+          '<div class="progress-row">' +
+            typeLabel + " · " + activity.title + ": <strong>&nbsp;" + gradeText + "</strong>" +
+          "</div>";
+      });
+
+      if (activitiesHtml === "") {
+        activitiesHtml = '<div class="progress-row">Todavía no hay actividades en esta categoría.</div>';
+      }
+
+      categoriesHtml +=
+        '<details class="grades-details plan-item">' +
+          "<summary>" + category.name + " (" + category.percentage + "%) — Media: " + avgText + "</summary>" +
+          '<div style="margin-top: 10px;">' + activitiesHtml + "</div>" +
+        "</details>";
+    });
+
+    card.innerHTML =
+      "<h2>" + classData.course + " " + classData.group_name + " — " + classData.subject + "</h2>" +
+      '<div class="grade-summary-grid">' +
+        '<div class="metric-card">' +
+          '<div class="metric-value">' + currentText + "</div>" +
+          '<div class="metric-label">Nota media actual</div>' +
+        "</div>" +
+        '<div class="metric-card">' +
+          '<div class="metric-value">' + projectedText + "</div>" +
+          '<div class="metric-label">Proyección si sigues así</div>' +
+        "</div>" +
+      "</div>" +
+      categoriesHtml;
+
+    holder.appendChild(card);
+  });
 }
 
 // ============================================================
