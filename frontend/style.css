@@ -801,3 +801,17 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
     width: 100%;
   }
 }
+
+/* ============================================================
+   AJUSTE: calendario más compacto en pantallas grandes
+============================================================ */
+
+.calendar-grid {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.calendar-weekdays {
+  max-width: 480px;
+  margin: 0 auto 6px;
+}
