@@ -144,7 +144,7 @@ input, select, textarea {
   outline: none;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); transition: border-color 0.2s; }
-textarea { min-height: 100px; resize: vertical; }
+textarea { min-height: 80px; resize: vertical; }
 
 button { border: none; }
 
@@ -391,6 +391,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 }
 
 .plan-item .secondary-btn { margin-top: 12px; margin-right: 8px; }
+.plan-item textarea { min-height: 50px; font-size: 13px; }
 
 .progress-row {
   display: flex;
@@ -608,12 +609,17 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   font-size: 11px;
   font-family: var(--font-mono);
   margin-bottom: 6px;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
 .calendar-day {
@@ -704,6 +710,52 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   margin-right: 4px;
   vertical-align: middle;
 }
+
+.announcement-item {
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+}
+.announcement-item:last-child { margin-bottom: 0; }
+.announcement-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.announcement-content {
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+.delivery-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--success-soft);
+  border: 1px solid var(--success);
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.status-done { background: var(--success-soft); color: var(--success); border: 1px solid var(--success); }
+.status-pending { background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning); }
 
 @media (max-width: 900px) {
   .app-shell {
@@ -800,51 +852,4 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   .view-header button {
     width: 100%;
   }
-}
-
-/* ============================================================
-   AJUSTE: calendario más compacto en pantallas grandes
-============================================================ */
-
-.calendar-grid {
-  max-width: 480px;
-  margin: 0 auto;
-}
-
-.calendar-weekdays {
-  max-width: 480px;
-  margin: 0 auto 6px;
-}
-.announcement-item {
-  padding: 14px;
-  margin-bottom: 10px;
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--accent);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-}
-.announcement-item:last-child { margin-bottom: 0; }
-.announcement-meta {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-.announcement-content {
-  white-space: pre-line;
-  line-height: 1.5;
-}
-
-.delivery-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: var(--success-soft);
-  border: 1px solid var(--success);
-  color: var(--success);
-  font-size: 13px;
-  font-weight: 700;
 }
