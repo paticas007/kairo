@@ -1525,23 +1525,32 @@ function renderClassDetailActivities(container, view) {
       : "";
 
     let actionsHtml = "";
+    let deliveryHtml = "";
+
     if (item.type === "task") {
       const doneLabel = item.completed ? "✅ Hecha" : "✅ Marcar como hecha";
       actionsHtml =
         '<button type="button" class="secondary-btn" ' + (item.completed ? "disabled" : "") + ' onclick="markTaskCompleteInDetail(' + item.id + ')">' + doneLabel + "</button>" +
-        '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">' + (item.has_submission ? "📎 Archivo entregado (cambiar)" : "📎 Entregar archivo") + "</button>" +
+        '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">' + (item.has_submission ? "📎 Cambiar archivo" : "📎 Entregar archivo") + "</button>" +
         '<input type="file" id="submit-file-input-' + item.id + '" class="hidden" onchange="handleFileSubmit(' + item.id + ', this)">';
+
+      if (item.has_submission && item.submitted_at) {
+        const submittedDate = new Date(item.submitted_at).toLocaleString("es-ES", {
+          day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+        });
+        deliveryHtml = '<div class="delivery-status">✅ Entregado el ' + submittedDate + "</div>";
+      }
     }
 
     element.innerHTML =
       '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
       '<div class="plan-meta">' + categoryLabel + "Fecha: " + item.due_date + "</div>" +
       descriptionHtml +
-      actionsHtml;
+      deliveryHtml +
+      "<div>" + actionsHtml + "</div>";
     container.appendChild(element);
   });
 }
-
 async function markTaskCompleteInDetail(taskId) {
   try {
     await api("/api/tasks/" + taskId + "/complete", {
