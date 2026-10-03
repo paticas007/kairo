@@ -803,11 +803,12 @@ def get_class_student_view(class_id: int, student_id: int):
         connection.close()
         raise HTTPException(status_code=404, detail="La clase no existe.")
 
-    tasks = connection.execute(
+        tasks = connection.execute(
         """
         SELECT tasks.*, evaluation_categories.name AS category_name,
                CASE WHEN task_completions.student_id IS NOT NULL THEN 1 ELSE 0 END AS completed,
-               CASE WHEN task_submissions.student_id IS NOT NULL THEN 1 ELSE 0 END AS has_submission
+               CASE WHEN task_submissions.student_id IS NOT NULL THEN 1 ELSE 0 END AS has_submission,
+               task_submissions.submitted_at AS submitted_at
         FROM tasks
         LEFT JOIN evaluation_categories ON tasks.category_id = evaluation_categories.id
         LEFT JOIN task_completions
