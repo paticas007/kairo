@@ -645,7 +645,96 @@ def get_evaluation_categories(class_id: int):
 
     return [dict(row) for row in categories]
 
+# ============================================================
+# TABLÓN DE ANUNCIOS   <-- NUEVO
+# ============================================================
 
+class AnnouncementCreate(BaseModel):
+    teacher_id: int
+    content: str
+
+
+@app.post("/api/classes/{class_id}/announcements")
+def create_announcement(class_id: int, data: AnnouncementCreate):
+    connection = get_connection()
+
+    class_item = connection.execute(
+        "SELECT id, teacher_id FROM classes WHERE id = ?", (class_id,)
+    ).fetchone()
+
+    if not class_item:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    if class_item["teacher_id"] != data.teacher_id:
+        connection.close()
+        raise HTTPException(status_code=403, detail="No tienes permiso para publicar en esta clase.")
+
+    content = data.content.strip()
+    if not content:
+        connection.close()
+        raise HTTPException(status_code=400, detail="Escribe algo antes de publicar.")
+
+    connection.execute(
+        "INSERT INTO announcements (class_id, teacher_id, content) VALUES (?, ?, ?)",
+        (class_id, data.teacher_id, content)
+    )
+    connection.commit()
+    connection.close()
+
+    return {"message": "Anuncio publicado correctamente."}
+
+
+@app.get("/api/classes/{class_id}/announcements")
+def get_announcements(class_id: int):
+    connection = get_connection()
+
+    class_exists = connection.execute(
+        "SELECT id FROM classes WHERE id = ?", (class_id,)
+    ).fetchone()
+
+    if not class_exists:
+        connection.close()
+        raise HTTPException(status_code=404, detail="La clase no existe.")
+
+    rows = connection.execute(
+        """
+        SELECT announcements.id, announcements.content, announcements.created_at,
+               teachers.name AS teacher_name, teachers.surname AS teacher_surname
+        FROM announcements
+        INNER JOIN teachers ON announcements.teacher_id = teachers.id
+        WHERE announcements.class_id = ?
+        ORDER BY announcements.created_at DESC
+        """,
+        (class_id,)
+    ).fetchall()
+
+    connection.close()
+
+    return [dict(row) for row in rows]
+
+
+@app.delete("/api/announcements/{announcement_id}")
+def delete_announcement(announcement_id: int, teacher_id: int):
+    connection = get_connection()
+
+    announcement = connection.execute(
+        "SELECT id, teacher_id FROM announcements WHERE id = ?", (announcement_id,)
+    ).fetchone()
+
+    if not announcement:
+        connection.close()
+        raise HTTPException(status_code=404, detail="El anuncio no existe.")
+
+    if announcement["teacher_id"] != teacher_id:
+        connection.close()
+        raise HTTPException(status_code=403, detail="No tienes permiso para borrar este anuncio.")
+
+    connection.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
+    connection.commit()
+    connection.close()
+
+    return {"message": "Anuncio eliminado correctamente."}
 # ============================================================
 # COMPAÑEROS Y PROFESOR DE UNA CLASE
 # ============================================================
