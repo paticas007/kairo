@@ -1056,6 +1056,7 @@ async function openTeacherClassActivities(classId) {
   }
 
   try {
+    await loadTeacherAnnouncements(classId);
     const data = await api("/api/classes/" + classId + "/activities-status");
 
     function renderActivity(item) {
@@ -1463,6 +1464,7 @@ async function openClassDetail(classId) {
     }
 
     renderClassDetailActivities(activitiesEl, view);
+    await loadStudentAnnouncements(classId);
 
   } catch (error) {
     showToast(error.message, "error");
@@ -2042,5 +2044,112 @@ function renderWorkload(role) {
     summaryEl.innerHTML =
       '<div style="width:28px;height:28px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#06070a;flex-shrink:0;">K</div>' +
       '<div><strong>Análisis KAIRO</strong><div class="plan-meta">' + message + "</div></div>";
+  }
+}
+
+// ============================================================
+// TABLÓN DE ANUNCIOS
+// ============================================================
+
+async function loadTeacherAnnouncements(classId) {
+  const container = document.getElementById("teacher-announcements-list");
+  if (!container) return;
+  container.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const announcements = await api("/api/classes/" + classId + "/announcements");
+
+    if (announcements.length === 0) {
+      container.innerHTML = "<p>Todavía no has publicado ningún aviso.</p>";
+      return;
+    }
+
+    container.innerHTML = announcements.map(function (item) {
+      const date = new Date(item.created_at).toLocaleString("es-ES", {
+        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+      });
+      return (
+        '<div class="announcement-item">' +
+          '<div class="announcement-meta">' + date + "</div>" +
+          '<div class="announcement-content">' + item.content + "</div>" +
+          '<button type="button" class="secondary-btn danger-btn" style="margin-top:8px;" onclick="deleteAnnouncement(' + item.id + ", " + classId + ')">🗑️ Eliminar</button>' +
+        "</div>"
+      );
+    }).join("");
+
+  } catch (error) {
+    container.innerHTML = "<p>No se pudieron cargar los anuncios.</p>";
+  }
+}
+
+async function postAnnouncement() {
+  if (!currentTeacherActivitiesClassId) return;
+
+  const input = document.getElementById("teacher-announcement-input");
+  const content = input ? input.value.trim() : "";
+
+  if (!content) {
+    showToast("Escribe algo antes de publicar.", "error");
+    return;
+  }
+
+  try {
+    await api("/api/classes/" + currentTeacherActivitiesClassId + "/announcements", {
+      method: "POST",
+      body: JSON.stringify({ teacher_id: currentUser.id, content: content })
+    });
+
+    showToast("Aviso publicado.", "success");
+    if (input) input.value = "";
+    await loadTeacherAnnouncements(currentTeacherActivitiesClassId);
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.postAnnouncement = postAnnouncement;
+
+async function deleteAnnouncement(announcementId, classId) {
+  const confirmed = await showConfirm("¿Seguro que quieres eliminar este aviso?");
+  if (!confirmed) return;
+
+  try {
+    await api("/api/announcements/" + announcementId + "?teacher_id=" + currentUser.id, {
+      method: "DELETE"
+    });
+    await loadTeacherAnnouncements(classId);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.deleteAnnouncement = deleteAnnouncement;
+
+async function loadStudentAnnouncements(classId) {
+  const container = document.getElementById("class-detail-announcements");
+  if (!container) return;
+  container.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const announcements = await api("/api/classes/" + classId + "/announcements");
+
+    if (announcements.length === 0) {
+      container.innerHTML = "<p>Tu profesor todavía no ha publicado ningún aviso.</p>";
+      return;
+    }
+
+    container.innerHTML = announcements.map(function (item) {
+      const date = new Date(item.created_at).toLocaleString("es-ES", {
+        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+      });
+      return (
+        '<div class="announcement-item">' +
+          '<div class="announcement-meta">' + item.teacher_name + " " + item.teacher_surname + " · " + date + "</div>" +
+          '<div class="announcement-content">' + item.content + "</div>" +
+        "</div>"
+      );
+    }).join("");
+
+  } catch (error) {
+    container.innerHTML = "<p>No se pudieron cargar los avisos.</p>";
   }
 }
