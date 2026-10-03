@@ -300,6 +300,7 @@ def create_tables():
             file_name TEXT NOT NULL,
             file_type TEXT NOT NULL,
             file_data TEXT NOT NULL,
+            comment TEXT DEFAULT '',
             submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(task_id, student_id),
             FOREIGN KEY (task_id)
@@ -310,10 +311,6 @@ def create_tables():
                 ON DELETE CASCADE
         )
     """)
-
-    # --------------------------------------------------------
-    # TABLÓN DE ANUNCIOS   <-- NUEVO
-    # --------------------------------------------------------
 
     connection.execute("""
         CREATE TABLE IF NOT EXISTS announcements (
@@ -348,6 +345,11 @@ def create_tables():
                 connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
             except Exception:
                 pass
+
+    try:
+        connection.execute("ALTER TABLE task_submissions ADD COLUMN comment TEXT DEFAULT ''")
+    except Exception:
+        pass
 
     connection.commit()
     connection.close()
