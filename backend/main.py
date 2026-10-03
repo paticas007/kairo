@@ -240,6 +240,10 @@ class TaskCompletionData(BaseModel):
     student_id: int
 
 
+class TaskUncompleteData(BaseModel):
+    student_id: int
+
+
 class PasswordRecoveryQuestionRequest(BaseModel):
     email: str
     role: str
@@ -261,6 +265,7 @@ class TaskFileSubmission(BaseModel):
     file_name: str
     file_type: str
     file_data: str
+    comment: str = ""
 
 
 class GradeSubmission(BaseModel):
@@ -268,6 +273,11 @@ class GradeSubmission(BaseModel):
     activity_id: int
     student_id: int
     grade: float
+
+
+class AnnouncementCreate(BaseModel):
+    teacher_id: int
+    content: str
 
 
 # ============================================================
@@ -290,6 +300,7 @@ def reset_database(data: AdminSecretRequest):
     connection = get_connection()
 
     tables_in_order = [
+        "announcements",
         "task_submissions",
         "grades",
         "task_completions",
@@ -645,14 +656,10 @@ def get_evaluation_categories(class_id: int):
 
     return [dict(row) for row in categories]
 
-# ============================================================
-# TABLÓN DE ANUNCIOS   <-- NUEVO
-# ============================================================
 
-class AnnouncementCreate(BaseModel):
-    teacher_id: int
-    content: str
-
+# ============================================================
+# TABLÓN DE ANUNCIOS
+# ============================================================
 
 @app.post("/api/classes/{class_id}/announcements")
 def create_announcement(class_id: int, data: AnnouncementCreate):
@@ -735,6 +742,8 @@ def delete_announcement(announcement_id: int, teacher_id: int):
     connection.close()
 
     return {"message": "Anuncio eliminado correctamente."}
+
+
 # ============================================================
 # COMPAÑEROS Y PROFESOR DE UNA CLASE
 # ============================================================
@@ -803,7 +812,7 @@ def get_class_student_view(class_id: int, student_id: int):
         connection.close()
         raise HTTPException(status_code=404, detail="La clase no existe.")
 
-        tasks = connection.execute(
+    tasks = connection.execute(
         """
         SELECT tasks.*, evaluation_categories.name AS category_name,
                CASE WHEN task_completions.student_id IS NOT NULL THEN 1 ELSE 0 END AS completed,
@@ -997,6 +1006,18 @@ def complete_task(task_id: int, data: TaskCompletionData):
     return {"message": "Tarea marcada como completada."}
 
 
+@app.post("/api/tasks/{task_id}/uncomplete")
+def uncomplete_task(task_id: int, data: TaskUncompleteData):
+    connection = get_connection()
+    connection.execute(
+        "DELETE FROM task_completions WHERE task_id = ? AND student_id = ?",
+        (task_id, data.student_id)
+    )
+    connection.commit()
+    connection.close()
+    return {"message": "Tarea devuelta a pendientes."}
+
+
 @app.get("/api/classes/{class_id}/tasks/{task_id}/progress")
 def get_task_progress(class_id: int, task_id: int):
     connection = get_connection()
@@ -1057,15 +1078,16 @@ def submit_task_file(task_id: int, data: TaskFileSubmission):
 
     connection.execute(
         """
-        INSERT INTO task_submissions (task_id, student_id, file_name, file_type, file_data)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO task_submissions (task_id, student_id, file_name, file_type, file_data, comment)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(task_id, student_id) DO UPDATE SET
             file_name = excluded.file_name,
             file_type = excluded.file_type,
             file_data = excluded.file_data,
+            comment = excluded.comment,
             submitted_at = CURRENT_TIMESTAMP
         """,
-        (task_id, data.student_id, data.file_name, data.file_type, data.file_data)
+        (task_id, data.student_id, data.file_name, data.file_type, data.file_data, data.comment.strip())
     )
 
     connection.execute(
@@ -1096,12 +1118,13 @@ def get_submission_file(task_id: int, student_id: int):
     return {
         "file_name": submission["file_name"],
         "file_type": submission["file_type"],
-        "file_data": submission["file_data"]
+        "file_data": submission["file_data"],
+        "comment": submission["comment"] if submission["comment"] else ""
     }
 
 
 # ============================================================
-# ACTIVIDADES POR CORREGIR (profesor)
+# ACTIVIDADES POR CORREGIR (profesor) — tareas y exámenes
 # ============================================================
 
 @app.get("/api/teachers/{teacher_id}/pending-corrections")
@@ -1109,14 +1132,16 @@ def get_pending_corrections(teacher_id: int):
 
     connection = get_connection()
 
-    rows = connection.execute(
+    task_rows = connection.execute(
         """
         SELECT
             tasks.id AS task_id,
             tasks.title,
+            classes.id AS class_id,
             classes.course, classes.group_name, classes.subject,
             students.id AS student_id, students.name, students.surname,
-            task_submissions.submitted_at
+            task_submissions.submitted_at,
+            task_submissions.comment
         FROM task_submissions
         INNER JOIN tasks ON task_submissions.task_id = tasks.id
         INNER JOIN classes ON tasks.class_id = classes.id
@@ -1133,9 +1158,52 @@ def get_pending_corrections(teacher_id: int):
         (teacher_id,)
     ).fetchall()
 
+    today_str = date.today().isoformat()
+
+    exam_rows = connection.execute(
+        """
+        SELECT exams.id, exams.title, exams.exam_date,
+               classes.id AS class_id, classes.course, classes.group_name, classes.subject,
+               (SELECT COUNT(*) FROM class_students WHERE class_students.class_id = classes.id) AS total_students,
+               (SELECT COUNT(*) FROM grades WHERE grades.activity_type = 'exam' AND grades.activity_id = exams.id) AS graded_count
+        FROM exams
+        INNER JOIN classes ON exams.class_id = classes.id
+        WHERE classes.teacher_id = ? AND exams.exam_date < ?
+        """,
+        (teacher_id, today_str)
+    ).fetchall()
+
     connection.close()
 
-    return [dict(row) for row in rows]
+    result = []
+
+    for row in task_rows:
+        result.append({
+            "type": "task",
+            "task_id": row["task_id"],
+            "title": row["title"],
+            "class_id": row["class_id"],
+            "course": row["course"], "group_name": row["group_name"], "subject": row["subject"],
+            "student_id": row["student_id"], "name": row["name"], "surname": row["surname"],
+            "submitted_at": row["submitted_at"],
+            "comment": row["comment"] if row["comment"] else ""
+        })
+
+    for row in exam_rows:
+        if row["total_students"] > 0 and row["graded_count"] >= row["total_students"]:
+            continue
+        result.append({
+            "type": "exam",
+            "exam_id": row["id"],
+            "title": row["title"],
+            "class_id": row["class_id"],
+            "course": row["course"], "group_name": row["group_name"], "subject": row["subject"],
+            "exam_date": row["exam_date"],
+            "graded_count": row["graded_count"],
+            "total_students": row["total_students"]
+        })
+
+    return result
 
 
 # ============================================================
@@ -1638,7 +1706,7 @@ def get_class_projects(class_id: int):
 
 
 # ============================================================
-# ACTIVIDADES DEL PROFESOR (usado para las métricas de Inicio)
+# ACTIVIDADES DEL PROFESOR (métricas de Inicio)
 # ============================================================
 
 @app.get("/api/teachers/{teacher_id}/activities")
@@ -1821,6 +1889,33 @@ def get_student_calendar(student_id: int):
     connection.close()
 
     return activities
+
+
+# ============================================================
+# TAREAS COMPLETADAS (alumno)
+# ============================================================
+
+@app.get("/api/students/{student_id}/completed-tasks")
+def get_completed_tasks(student_id: int):
+    connection = get_connection()
+
+    rows = connection.execute(
+        """
+        SELECT tasks.id, tasks.title, tasks.due_date,
+               classes.subject, classes.course, classes.group_name,
+               task_completions.completed_at
+        FROM task_completions
+        INNER JOIN tasks ON task_completions.task_id = tasks.id
+        INNER JOIN classes ON tasks.class_id = classes.id
+        WHERE task_completions.student_id = ?
+        ORDER BY task_completions.completed_at DESC
+        """,
+        (student_id,)
+    ).fetchall()
+
+    connection.close()
+
+    return [dict(row) for row in rows]
 
 
 # ============================================================
