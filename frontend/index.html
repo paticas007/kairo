@@ -146,6 +146,13 @@
         </div>
 
         <div class="panel">
+          <h2>📢 Tablón de la clase</h2>
+          <textarea id="teacher-announcement-input" placeholder="Escribe un aviso para tus alumnos..."></textarea>
+          <button type="button" class="primary-btn" style="margin-top:10px;" onclick="postAnnouncement()">Publicar aviso</button>
+          <div id="teacher-announcements-list" style="margin-top:16px;"></div>
+        </div>
+
+        <div class="panel">
           <h2>✅ Completadas por todos</h2>
           <div id="teacher-tasks-completed"></div>
         </div>
@@ -288,12 +295,17 @@
         </div>
 
         <div class="panel">
+          <h2>📢 Tablón de la clase</h2>
+          <div id="class-detail-announcements"></div>
+        </div>
+
+        <div class="panel">
           <h2>Compañeros de clase</h2>
           <div id="class-detail-roster"></div>
         </div>
 
         <div class="panel">
-          <h2>Tablón de la clase</h2>
+          <h2>Actividades de la clase</h2>
           <div id="class-detail-activities"></div>
         </div>
       </div>
