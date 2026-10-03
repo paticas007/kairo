@@ -421,6 +421,14 @@ async function api(url, options) {
 }
 
 // ============================================================
+// INVALIDACIÓN DE CACHÉ DE CALENDARIO / CARGA
+// ============================================================
+
+function invalidateCalendarCache(role) {
+  calendarDataCache[role] = null;
+}
+
+// ============================================================
 // ROL Y AUTENTICACIÓN
 // ============================================================
 
@@ -779,6 +787,7 @@ async function deleteClass(classId) {
       method: "DELETE"
     });
 
+    invalidateCalendarCache("teacher");
     await loadTeacherDashboard();
 
   } catch (error) {
@@ -951,6 +960,7 @@ async function handleCreateActivity(event) {
     const modal = document.getElementById("modal-create-activity");
     if (modal) modal.close();
 
+    invalidateCalendarCache("teacher");
     await loadTeacherActivities();
     if (currentTeacherActivitiesClassId) {
       await openTeacherClassActivities(currentTeacherActivitiesClassId);
@@ -967,6 +977,16 @@ async function handleCreateActivity(event) {
 // ACTIVIDADES POR CORREGIR (dashboard profesor)
 // ============================================================
 
+function goToGradebookForClass(classId) {
+  setActiveView("teacher", "grades");
+  const select = document.getElementById("gradebook-class");
+  if (select) {
+    select.value = String(classId);
+    handleGradebookClassChange({ target: select });
+  }
+}
+window.goToGradebookForClass = goToGradebookForClass;
+
 async function loadPendingCorrections() {
   const container = document.getElementById("teacher-activities-dashboard");
   if (!container) return;
@@ -977,22 +997,35 @@ async function loadPendingCorrections() {
     const pending = await api("/api/teachers/" + currentUser.id + "/pending-corrections");
 
     if (pending.length === 0) {
-      container.innerHTML = "<p>No tienes ninguna entrega pendiente de corregir. 🎉</p>";
+      container.innerHTML = "<p>No tienes ninguna entrega ni examen pendiente de corregir. 🎉</p>";
       return;
     }
 
-    container.innerHTML = "";
-
-    pending.forEach(function (item) {
-      const element = document.createElement("div");
-      element.className = "plan-item";
-      element.innerHTML =
-        '<div class="plan-title">📝 ' + item.title + "</div>" +
-        '<div class="plan-meta">' + item.course + " " + item.group_name + " · " + item.subject +
-          " · Entregado por " + item.name + " " + item.surname + "</div>" +
-        '<button type="button" class="secondary-btn" onclick="viewSubmission(' + item.task_id + ", " + item.student_id + ')">📎 Ver entrega</button>';
-      container.appendChild(element);
-    });
+    container.innerHTML = pending.map(function (item) {
+      if (item.type === "task") {
+        const commentHtml = item.comment
+          ? '<div class="plan-meta" style="margin-top:8px;white-space:pre-line;">💬 ' + item.comment + "</div>"
+          : "";
+        return (
+          '<div class="plan-item">' +
+            '<div class="plan-title">📝 ' + item.title + "</div>" +
+            '<div class="plan-meta">' + item.course + " " + item.group_name + " · " + item.subject +
+              " · Entregado por " + item.name + " " + item.surname + "</div>" +
+            commentHtml +
+            '<button type="button" class="secondary-btn" onclick="viewSubmission(' + item.task_id + ", " + item.student_id + ')">📎 Ver entrega</button>' +
+          "</div>"
+        );
+      } else {
+        return (
+          '<div class="plan-item">' +
+            '<div class="plan-title">📚 ' + item.title + "</div>" +
+            '<div class="plan-meta">' + item.course + " " + item.group_name + " · " + item.subject +
+              " · Examen del " + item.exam_date + " · " + item.graded_count + " de " + item.total_students + " calificados</div>" +
+            '<button type="button" class="secondary-btn" onclick="goToGradebookForClass(' + item.class_id + ')">📊 Ir a poner notas</button>' +
+          "</div>"
+        );
+      }
+    }).join("");
 
   } catch (error) {
     console.error("Error cargando correcciones pendientes:", error);
@@ -1027,7 +1060,7 @@ function updateTeacherMetrics(activities) {
 }
 
 // ============================================================
-// ACTIVIDADES DE UNA CLASE, POR ESTADO (profesor)
+// ACTIVIDADES DE UNA CLASE, POR ESTADO (profesor) + TABLÓN
 // ============================================================
 
 async function openTeacherClassActivities(classId) {
@@ -1040,12 +1073,13 @@ async function openTeacherClassActivities(classId) {
     titleEl.textContent = classItem.course + " " + classItem.group_name + " — " + classItem.subject;
   }
 
+  const announcementsEl = document.getElementById("teacher-announcements-list");
   const completedEl = document.getElementById("teacher-tasks-completed");
   const pendingEl = document.getElementById("teacher-tasks-pending");
   const scheduledEl = document.getElementById("teacher-scheduled");
   const examsProjectsEl = document.getElementById("teacher-exams-projects");
 
-  [completedEl, pendingEl, scheduledEl, examsProjectsEl].forEach(function (el) {
+  [announcementsEl, completedEl, pendingEl, scheduledEl, examsProjectsEl].forEach(function (el) {
     if (el) el.innerHTML = "<p>Cargando...</p>";
   });
 
@@ -1056,7 +1090,27 @@ async function openTeacherClassActivities(classId) {
   }
 
   try {
-    await loadTeacherAnnouncements(classId);
+    const announcements = await api("/api/classes/" + classId + "/announcements");
+
+    if (announcementsEl) {
+      if (announcements.length === 0) {
+        announcementsEl.innerHTML = "<p>Todavía no has publicado ningún aviso.</p>";
+      } else {
+        announcementsEl.innerHTML = announcements.map(function (item) {
+          const dateStr = new Date(item.created_at).toLocaleString("es-ES", {
+            day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+          });
+          return (
+            '<div class="announcement-item">' +
+              '<div class="announcement-meta">' + dateStr + "</div>" +
+              '<div class="announcement-content">' + item.content + "</div>" +
+              '<button type="button" class="secondary-btn danger-btn" style="margin-top:8px;" onclick="deleteAnnouncement(' + item.id + ", " + classId + ')">🗑️ Eliminar</button>' +
+            "</div>"
+          );
+        }).join("");
+      }
+    }
+
     const data = await api("/api/classes/" + classId + "/activities-status");
 
     function renderActivity(item) {
@@ -1105,6 +1159,48 @@ async function openTeacherClassActivities(classId) {
 }
 window.openTeacherClassActivities = openTeacherClassActivities;
 
+async function postAnnouncement() {
+  if (!currentTeacherActivitiesClassId) return;
+
+  const input = document.getElementById("teacher-announcement-input");
+  const content = input ? input.value.trim() : "";
+
+  if (!content) {
+    showToast("Escribe algo antes de publicar.", "error");
+    return;
+  }
+
+  try {
+    await api("/api/classes/" + currentTeacherActivitiesClassId + "/announcements", {
+      method: "POST",
+      body: JSON.stringify({ teacher_id: currentUser.id, content: content })
+    });
+
+    showToast("Aviso publicado correctamente.", "success");
+    if (input) input.value = "";
+    await openTeacherClassActivities(currentTeacherActivitiesClassId);
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.postAnnouncement = postAnnouncement;
+
+async function deleteAnnouncement(announcementId, classId) {
+  const confirmed = await showConfirm("¿Seguro que quieres eliminar este aviso?");
+  if (!confirmed) return;
+
+  try {
+    await api("/api/announcements/" + announcementId + "?teacher_id=" + currentUser.id, {
+      method: "DELETE"
+    });
+    await openTeacherClassActivities(classId);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.deleteAnnouncement = deleteAnnouncement;
+
 async function deleteActivity(type, id) {
   const confirmed = await showConfirm("¿Seguro que quieres eliminar esta actividad? Esta acción no se puede deshacer.");
   if (!confirmed) return;
@@ -1117,6 +1213,7 @@ async function deleteActivity(type, id) {
 
   try {
     await api(endpoints[type] + "?teacher_id=" + currentUser.id, { method: "DELETE" });
+    invalidateCalendarCache("teacher");
     await loadTeacherActivities();
     if (currentTeacherActivitiesClassId) {
       await openTeacherClassActivities(currentTeacherActivitiesClassId);
@@ -1306,11 +1403,16 @@ async function viewSubmission(taskId, studentId) {
       return;
     }
 
+    const commentHtml = file.comment
+      ? '<p style="margin-top:16px;"><strong>Comentario del alumno:</strong><br>' + file.comment + "</p>"
+      : "";
+
     if (file.file_type.indexOf("image/") === 0) {
       newWindow.document.write(
         "<title>" + file.file_name + "</title>" +
-        '<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh;">' +
-          '<img src="' + dataUrl + '" style="max-width:100%;max-height:100%;">' +
+        '<body style="margin:0;background:#111;color:#fff;padding:24px;font-family:sans-serif;">' +
+          '<img src="' + dataUrl + '" style="max-width:100%;display:block;margin:0 auto;">' +
+          commentHtml +
         "</body>"
       );
     } else {
@@ -1319,6 +1421,7 @@ async function viewSubmission(taskId, studentId) {
         '<body style="font-family:sans-serif;padding:40px;">' +
           "<p>Archivo entregado: <strong>" + file.file_name + "</strong></p>" +
           '<a href="' + dataUrl + '" download="' + file.file_name + '">⬇️ Descargar archivo</a>' +
+          commentHtml +
         "</body>"
       );
     }
@@ -1339,6 +1442,7 @@ async function loadStudentDashboard() {
 
   await loadStudentClasses();
   await loadStudentPlan();
+  await loadCompletedTasksPanel();
 
   startAutoRefresh();
 }
@@ -1428,7 +1532,7 @@ async function handleJoinClass(event) {
 }
 
 // ============================================================
-// VISTA DE DETALLE DE UNA CLASE (alumno)
+// VISTA DE DETALLE DE UNA CLASE (alumno) — autocontenida
 // ============================================================
 
 async function openClassDetail(classId) {
@@ -1439,35 +1543,51 @@ async function openClassDetail(classId) {
   const teacherEl = document.getElementById("class-detail-teacher");
   const rosterEl = document.getElementById("class-detail-roster");
   const activitiesEl = document.getElementById("class-detail-activities");
+  const announcementsEl = document.getElementById("class-detail-announcements");
 
   if (titleEl) titleEl.textContent = "Cargando...";
   if (teacherEl) teacherEl.textContent = "";
   if (rosterEl) rosterEl.innerHTML = "";
   if (activitiesEl) activitiesEl.innerHTML = "<p>Cargando...</p>";
+  if (announcementsEl) announcementsEl.innerHTML = "<p>Cargando...</p>";
 
   try {
     const roster = await api("/api/classes/" + classId + "/roster");
     const view = await api("/api/classes/" + classId + "/student-view?student_id=" + currentUser.id);
+    const announcements = await api("/api/classes/" + classId + "/announcements");
 
     if (titleEl) titleEl.textContent = roster.class.course + " " + roster.class.group_name + " — " + roster.class.subject;
     if (teacherEl) teacherEl.textContent = "Profesor: " + roster.teacher.name + " " + roster.teacher.surname;
 
     if (rosterEl) {
       const others = roster.students.filter(function (s) { return s.id !== currentUser.id; });
-      if (others.length === 0) {
-        rosterEl.innerHTML = "<p>Todavía no hay más alumnos en esta clase.</p>";
-      } else {
-        rosterEl.innerHTML = others.map(function (s) {
-          return '<div class="progress-row">👤 ' + s.name + " " + s.surname + "</div>";
-        }).join("");
-      }
+      rosterEl.innerHTML = others.length === 0
+        ? "<p>Todavía no hay más alumnos en esta clase.</p>"
+        : others.map(function (s) { return '<div class="progress-row">👤 ' + s.name + " " + s.surname + "</div>"; }).join("");
+    }
+
+    if (announcementsEl) {
+      announcementsEl.innerHTML = announcements.length === 0
+        ? "<p>Tu profesor todavía no ha publicado ningún aviso.</p>"
+        : announcements.map(function (item) {
+            const dateStr = new Date(item.created_at).toLocaleString("es-ES", {
+              day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+            });
+            return (
+              '<div class="announcement-item">' +
+                '<div class="announcement-meta">' + item.teacher_name + " " + item.teacher_surname + " · " + dateStr + "</div>" +
+                '<div class="announcement-content">' + item.content + "</div>" +
+              "</div>"
+            );
+          }).join("");
     }
 
     renderClassDetailActivities(activitiesEl, view);
-    await loadStudentAnnouncements(classId);
 
   } catch (error) {
     showToast(error.message, "error");
+    if (titleEl) titleEl.textContent = "No se pudo cargar la clase";
+    if (activitiesEl) activitiesEl.innerHTML = "<p>Ha ocurrido un error al cargar esta clase. Vuelve atrás e inténtalo de nuevo.</p>";
   }
 }
 window.openClassDetail = openClassDetail;
@@ -1524,15 +1644,25 @@ function renderClassDetailActivities(container, view) {
       ? '<div class="plan-meta" style="margin-top:10px;white-space:pre-line;">📄 ' + item.description + "</div>"
       : "";
 
+    let statusBadge = "";
     let actionsHtml = "";
     let deliveryHtml = "";
 
     if (item.type === "task") {
+      statusBadge = item.completed
+        ? '<span class="status-badge status-done">✅ Entregado</span>'
+        : '<span class="status-badge status-pending">⏳ Pendiente</span>';
+
       const doneLabel = item.completed ? "✅ Hecha" : "✅ Marcar como hecha";
+      const commentBoxHtml = '<textarea id="submission-comment-' + item.id + '" placeholder="Comentario opcional para el profesor..."></textarea>';
+
       actionsHtml =
-        '<button type="button" class="secondary-btn" ' + (item.completed ? "disabled" : "") + ' onclick="markTaskCompleteInDetail(' + item.id + ')">' + doneLabel + "</button>" +
-        '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">' + (item.has_submission ? "📎 Cambiar archivo" : "📎 Entregar archivo") + "</button>" +
-        '<input type="file" id="submit-file-input-' + item.id + '" class="hidden" onchange="handleFileSubmit(' + item.id + ', this)">';
+        commentBoxHtml +
+        '<div style="margin-top:8px;">' +
+          '<button type="button" class="secondary-btn" ' + (item.completed ? "disabled" : "") + ' onclick="markTaskCompleteInDetail(' + item.id + ')">' + doneLabel + "</button>" +
+          '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">' + (item.has_submission ? "📎 Cambiar archivo" : "📎 Entregar archivo") + "</button>" +
+          '<input type="file" id="submit-file-input-' + item.id + '" class="hidden" onchange="handleFileSubmit(' + item.id + ', this)">' +
+        "</div>";
 
       if (item.has_submission && item.submitted_at) {
         const submittedDate = new Date(item.submitted_at).toLocaleString("es-ES", {
@@ -1543,14 +1673,15 @@ function renderClassDetailActivities(container, view) {
     }
 
     element.innerHTML =
-      '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
+      '<div class="plan-title">' + typeLabel + " · " + item.title + " " + statusBadge + "</div>" +
       '<div class="plan-meta">' + categoryLabel + "Fecha: " + item.due_date + "</div>" +
       descriptionHtml +
       deliveryHtml +
-      "<div>" + actionsHtml + "</div>";
+      actionsHtml;
     container.appendChild(element);
   });
 }
+
 async function markTaskCompleteInDetail(taskId) {
   try {
     await api("/api/tasks/" + taskId + "/complete", {
@@ -1558,6 +1689,7 @@ async function markTaskCompleteInDetail(taskId) {
       body: JSON.stringify({ student_id: currentUser.id })
     });
     showToast("Tarea marcada como hecha.", "success");
+    invalidateCalendarCache("student");
     if (currentClassDetailId) await openClassDetail(currentClassDetailId);
   } catch (error) {
     showToast(error.message, "error");
@@ -1571,7 +1703,9 @@ async function markTaskComplete(taskId) {
       method: "POST",
       body: JSON.stringify({ student_id: currentUser.id })
     });
+    invalidateCalendarCache("student");
     await loadStudentPlan();
+    await loadCompletedTasksPanel();
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -1598,6 +1732,9 @@ async function handleFileSubmit(taskId, input) {
     return;
   }
 
+  const commentEl = document.getElementById("submission-comment-" + taskId);
+  const comment = commentEl ? commentEl.value.trim() : "";
+
   const reader = new FileReader();
 
   reader.onload = async function () {
@@ -1610,16 +1747,19 @@ async function handleFileSubmit(taskId, input) {
           student_id: currentUser.id,
           file_name: file.name,
           file_type: file.type || "application/octet-stream",
-          file_data: base64
+          file_data: base64,
+          comment: comment
         })
       });
 
       showToast("Archivo entregado correctamente.", "success");
+      invalidateCalendarCache("student");
 
       if (currentClassDetailId) {
         await openClassDetail(currentClassDetailId);
       } else {
         await loadStudentPlan();
+        await loadCompletedTasksPanel();
       }
 
     } catch (error) {
@@ -1634,6 +1774,10 @@ async function handleFileSubmit(taskId, input) {
   reader.readAsDataURL(file);
 }
 window.handleFileSubmit = handleFileSubmit;
+
+// ============================================================
+// PLAN DIARIO
+// ============================================================
 
 async function loadStudentPlan() {
   const container = document.getElementById("student-plan");
@@ -1679,6 +1823,10 @@ async function loadStudentPlan() {
           ? '<button type="button" class="secondary-btn" onclick="markTaskComplete(' + item.id + ')">✅ Marcar como hecha</button>'
           : "";
 
+        const commentBoxHtml = item.type === "task"
+          ? '<textarea id="submission-comment-' + item.id + '" placeholder="Comentario opcional para el profesor..."></textarea>'
+          : "";
+
         const submitButtonHtml = item.type === "task"
           ? '<button type="button" class="secondary-btn" onclick="triggerFileSubmit(' + item.id + ')">📎 Entregar archivo</button>' +
             '<input type="file" id="submit-file-input-' + item.id + '" class="hidden" onchange="handleFileSubmit(' + item.id + ', this)">'
@@ -1688,8 +1836,8 @@ async function loadStudentPlan() {
           '<div class="plan-title">' + label + " · " + typeLabel + "<br>" + item.title + "</div>" +
           '<div class="plan-meta">' + item.subject + " · " + formatDays(item.days_left) + " · Importancia: " + item.priority + "</div>" +
           descriptionHtml +
-          doneButton +
-          submitButtonHtml;
+          commentBoxHtml +
+          '<div style="margin-top:8px;">' + doneButton + submitButtonHtml + "</div>";
         target.appendChild(element);
       });
     }
@@ -1725,7 +1873,60 @@ function formatDays(days) {
 }
 
 // ============================================================
-// NOTAS DEL ALUMNO (ahora con selector de clase)
+// TAREAS COMPLETADAS (Plan diario, con opción de revertir)
+// ============================================================
+
+async function loadCompletedTasksPanel() {
+  const container = document.getElementById("student-completed-tasks");
+  if (!container) return;
+  container.innerHTML = "<p>Cargando...</p>";
+
+  try {
+    const completed = await api("/api/students/" + currentUser.id + "/completed-tasks");
+
+    if (completed.length === 0) {
+      container.innerHTML = "<p>Todavía no has completado ninguna tarea.</p>";
+      return;
+    }
+
+    container.innerHTML = completed.map(function (item) {
+      const dateStr = new Date(item.completed_at).toLocaleString("es-ES", {
+        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+      });
+      return (
+        '<div class="plan-item">' +
+          '<div class="plan-title">' + item.title + " <span class=\"status-badge status-done\">✅ Completada</span></div>" +
+          '<div class="plan-meta">' + item.subject + " · Completada el " + dateStr + "</div>" +
+          '<button type="button" class="secondary-btn" onclick="revertTaskCompletion(' + item.id + ')">↩️ Desmarcar</button>' +
+        "</div>"
+      );
+    }).join("");
+
+  } catch (error) {
+    container.innerHTML = "<p>No se pudieron cargar las tareas completadas.</p>";
+  }
+}
+
+async function revertTaskCompletion(taskId) {
+  try {
+    await api("/api/tasks/" + taskId + "/uncomplete", {
+      method: "POST",
+      body: JSON.stringify({ student_id: currentUser.id })
+    });
+
+    showToast("Tarea devuelta a pendientes.", "success");
+    invalidateCalendarCache("student");
+    await loadStudentPlan();
+    await loadCompletedTasksPanel();
+
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+window.revertTaskCompletion = revertTaskCompletion;
+
+// ============================================================
+// NOTAS DEL ALUMNO
 // ============================================================
 
 async function loadStudentGrades() {
@@ -1878,6 +2079,13 @@ function dotClassForLevel(level) {
   return "dot-none";
 }
 
+function getDayTaskStatus(activities, dateStr) {
+  const dayTasks = activities.filter(function (a) { return a.date === dateStr && a.type === "task"; });
+  if (dayTasks.length === 0) return null;
+  const allDone = dayTasks.every(function (t) { return t.completed; });
+  return allDone ? "done" : "pending";
+}
+
 async function ensureCalendarData(role) {
   if (calendarDataCache[role]) return calendarDataCache[role];
 
@@ -1942,7 +2150,15 @@ function renderCalendarGrid(role) {
     if (dateStr === todayStr) cell.classList.add("calendar-day-today");
     if (dateStr === calendarSelectedDate[role]) cell.classList.add("calendar-day-selected");
 
-    cell.innerHTML = "<span>" + day + "</span><span class='dot " + dotClassForLevel(level) + "'></span>";
+    let markerHtml = "<span class='dot " + dotClassForLevel(level) + "'></span>";
+    if (role === "student") {
+      const status = getDayTaskStatus(activities, dateStr);
+      if (status === "done") {
+        markerHtml = "<span style='color:var(--success);font-size:12px;font-weight:700;'>✓</span>";
+      }
+    }
+
+    cell.innerHTML = "<span>" + day + "</span>" + markerHtml;
     cell.addEventListener("click", function () {
       selectCalendarDay(role, dateStr);
     });
@@ -1989,9 +2205,13 @@ function renderCalendarDayDetail(role, dateStr) {
     if (item.type === "exam") typeLabel = "📚 Examen";
     else if (item.type === "project") typeLabel = "🗂️ Proyecto";
 
+    const statusBadge = (role === "student" && item.type === "task")
+      ? (item.completed ? ' <span class="status-badge status-done">✅ Entregado</span>' : ' <span class="status-badge status-pending">⏳ Pendiente</span>')
+      : "";
+
     return (
       '<div class="plan-item">' +
-        '<div class="plan-title">' + typeLabel + " · " + item.title + "</div>" +
+        '<div class="plan-title">' + typeLabel + " · " + item.title + statusBadge + "</div>" +
         '<div class="plan-meta">' + item.course + " " + item.group_name + " · " + item.subject + "</div>" +
       "</div>"
     );
@@ -2008,17 +2228,15 @@ function renderWorkload(role) {
   const counts = countActivitiesByDay(activities);
 
   const today = new Date();
-  const mondayOffset = (today.getDay() + 6) % 7;
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset);
-
-  const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const weekDays = [];
 
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
     const dateStr = d.toISOString().slice(0, 10);
     const count = counts[dateStr] || 0;
-    weekDays.push({ label: dayNames[i] + " " + d.getDate(), count: count, level: loadLevelForCount(count) });
+    const label = (i === 0 ? "Hoy" : dayNames[d.getDay()] + " " + d.getDate());
+    weekDays.push({ label: label, count: count, level: loadLevelForCount(count) });
   }
 
   const daysContainer = document.getElementById(role + "-workload-days");
@@ -2045,120 +2263,13 @@ function renderWorkload(role) {
 
   const summaryEl = document.getElementById(role + "-workload-summary");
   if (summaryEl) {
-    let message = "Semana sin actividades registradas.";
-    if (maxLevel === "alta") message = "Esta semana tienes días con carga alta. Organiza bien tu tiempo.";
-    else if (maxLevel === "media") message = "Esta semana tienes carga moderada. Vas bien, sigue así.";
-    else if (maxLevel === "baja") message = "Semana tranquila, buen momento para adelantar trabajo.";
+    let message = "Los próximos 7 días están tranquilos, sin actividades registradas.";
+    if (maxLevel === "alta") message = "En los próximos días hay jornadas con carga alta. Organiza bien tu tiempo.";
+    else if (maxLevel === "media") message = "Carga moderada en los próximos días. Vas bien, sigue así.";
+    else if (maxLevel === "baja") message = "Próximos días tranquilos, buen momento para adelantar trabajo.";
 
     summaryEl.innerHTML =
       '<div style="width:28px;height:28px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#06070a;flex-shrink:0;">K</div>' +
       '<div><strong>Análisis KAIRO</strong><div class="plan-meta">' + message + "</div></div>";
-  }
-}
-
-// ============================================================
-// TABLÓN DE ANUNCIOS
-// ============================================================
-
-async function loadTeacherAnnouncements(classId) {
-  const container = document.getElementById("teacher-announcements-list");
-  if (!container) return;
-  container.innerHTML = "<p>Cargando...</p>";
-
-  try {
-    const announcements = await api("/api/classes/" + classId + "/announcements");
-
-    if (announcements.length === 0) {
-      container.innerHTML = "<p>Todavía no has publicado ningún aviso.</p>";
-      return;
-    }
-
-    container.innerHTML = announcements.map(function (item) {
-      const date = new Date(item.created_at).toLocaleString("es-ES", {
-        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
-      });
-      return (
-        '<div class="announcement-item">' +
-          '<div class="announcement-meta">' + date + "</div>" +
-          '<div class="announcement-content">' + item.content + "</div>" +
-          '<button type="button" class="secondary-btn danger-btn" style="margin-top:8px;" onclick="deleteAnnouncement(' + item.id + ", " + classId + ')">🗑️ Eliminar</button>' +
-        "</div>"
-      );
-    }).join("");
-
-  } catch (error) {
-    container.innerHTML = "<p>No se pudieron cargar los anuncios.</p>";
-  }
-}
-
-async function postAnnouncement() {
-  if (!currentTeacherActivitiesClassId) return;
-
-  const input = document.getElementById("teacher-announcement-input");
-  const content = input ? input.value.trim() : "";
-
-  if (!content) {
-    showToast("Escribe algo antes de publicar.", "error");
-    return;
-  }
-
-  try {
-    await api("/api/classes/" + currentTeacherActivitiesClassId + "/announcements", {
-      method: "POST",
-      body: JSON.stringify({ teacher_id: currentUser.id, content: content })
-    });
-
-    showToast("Aviso publicado.", "success");
-    if (input) input.value = "";
-    await loadTeacherAnnouncements(currentTeacherActivitiesClassId);
-
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-window.postAnnouncement = postAnnouncement;
-
-async function deleteAnnouncement(announcementId, classId) {
-  const confirmed = await showConfirm("¿Seguro que quieres eliminar este aviso?");
-  if (!confirmed) return;
-
-  try {
-    await api("/api/announcements/" + announcementId + "?teacher_id=" + currentUser.id, {
-      method: "DELETE"
-    });
-    await loadTeacherAnnouncements(classId);
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-window.deleteAnnouncement = deleteAnnouncement;
-
-async function loadStudentAnnouncements(classId) {
-  const container = document.getElementById("class-detail-announcements");
-  if (!container) return;
-  container.innerHTML = "<p>Cargando...</p>";
-
-  try {
-    const announcements = await api("/api/classes/" + classId + "/announcements");
-
-    if (announcements.length === 0) {
-      container.innerHTML = "<p>Tu profesor todavía no ha publicado ningún aviso.</p>";
-      return;
-    }
-
-    container.innerHTML = announcements.map(function (item) {
-      const date = new Date(item.created_at).toLocaleString("es-ES", {
-        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
-      });
-      return (
-        '<div class="announcement-item">' +
-          '<div class="announcement-meta">' + item.teacher_name + " " + item.teacher_surname + " · " + date + "</div>" +
-          '<div class="announcement-content">' + item.content + "</div>" +
-        "</div>"
-      );
-    }).join("");
-
-  } catch (error) {
-    container.innerHTML = "<p>No se pudieron cargar los avisos.</p>";
   }
 }
